@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package event.v1;
+
+option go_package = "github.com/korlvs/event-logging/contracts/event/event/v1";
+
+import "google/protobuf/timestamp.proto";
+
+message Event {
+    string id = 1;
+    string source_system = 2;
+    google.protobuf.Timestamp event_time = 3;
+    google.protobuf.Timestamp published_time = 4;
+    string initiator = 5;
+    string state_before = 6;
+    string state_after = 7;
+    string change_tag = 8;
+}
