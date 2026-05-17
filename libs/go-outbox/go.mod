@@ -1,4 +1,4 @@
-module github.com/korlvs/go-outbox
+module github.com/korlvs/event-logging/libs/go-outbox
 
 go 1.24.5
 
@@ -29,5 +29,3 @@ require (
 	golang.org/x/crypto v0.26.0 // indirect
 	golang.org/x/net v0.28.0 // indirect
 )
-
-replace github.com/korlvs/event-contract => ../../contracts/event
