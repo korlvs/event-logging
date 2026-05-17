@@ -1,4 +1,4 @@
-module github.com/korlvs/event-contract
+module github.com/korlvs/event-logging/contracts/event
 
 go 1.24.5
 
