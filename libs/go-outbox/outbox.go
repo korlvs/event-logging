@@ -5,9 +5,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	eventpb "github.com/korlvs/event-logging/contracts/event"
 	"google.golang.org/protobuf/proto"
 	"gorm.io/gorm"
@@ -36,25 +33,12 @@ func Init(db *gorm.DB, cfg Config) error {
 }
 
 func (o *Outbox) setup() error {
-	// 1. Миграции
-	driver, err := iofs.New(MigrationsFS, "migrations")
-	if err != nil {
-		return err
-	}
-	sqlDB, _ := o.db.DB()
-	dsn := sqlDB.Driver().(interface{ Name() string }).Name()
-	m, err := migrate.NewWithSourceInstance("iofs", driver, dsn)
-	if err != nil {
-		return err
-	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return err
-	}
+	// Автоматическое создание таблицы outbox (миграция)
 	if err := o.db.AutoMigrate(&OutboxRecord{}); err != nil {
 		return err
 	}
 
-	// 2. Выбор режима
+	// Выбор режима
 	switch o.cfg.Mode {
 	case "schema-registry":
 		o.encoder = NewSchemaRegistryEncoder(o.cfg.SchemaIDKey, o.cfg.SchemaIDValue)
