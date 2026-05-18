@@ -1,0 +1,101 @@
+openapi: 3.0.3
+info:
+  title: Event Sink API
+  version: 1.0.0
+paths:
+  /events:
+    get:
+      operationId: listEvents
+      parameters:
+        - name: source_system
+          in: query
+          schema: { type: string }
+        - name: change_tag
+          in: query
+          schema: { type: string }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventListResponse'
+  /events/{id}:
+    get:
+      operationId: getEventById
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoredEvent'
+components:
+  schemas:
+    StoredEvent:
+      type: object
+      required:
+        - id
+        - source_system
+        - event_time
+        - published_time
+        - initiator
+        - change_tag
+      properties:
+        id:
+          type: string
+        source_system:
+          type: string
+        event_time:
+          type: string
+          format: date-time
+        published_time:
+          type: string
+          format: date-time
+        initiator:
+          type: string
+        state_before:
+          type: string
+          nullable: true
+        state_after:
+          type: string
+          nullable: true
+        change_tag:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+    EventListResponse:
+      type: object
+      required:
+        - items
+        - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/StoredEvent'
+        total:
+          type: integer
+          format: int64

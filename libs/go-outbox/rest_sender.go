@@ -10,24 +10,24 @@ import (
 	"time"
 )
 
-type Publisher struct {
+type RestSender struct {
 	client  *http.Client
 	restURL string
 	topic   string
 	auth    string
 }
 
-func NewPublisher(cfg Config) *Publisher {
+func NewRestSender(cfg Config) (*RestSender, error) {
 	auth := base64.StdEncoding.EncodeToString([]byte(cfg.KafkaUsername + ":" + cfg.KafkaPassword))
-	return &Publisher{
+	return &RestSender{
 		client:  &http.Client{Timeout: 10 * time.Second},
 		restURL: cfg.KafkaRestURL,
 		topic:   cfg.KafkaTopic,
 		auth:    auth,
-	}
+	}, nil
 }
 
-func (p *Publisher) Send(ctx context.Context, key string, encodedKey, encodedValue []byte) error {
+func (s *RestSender) Send(ctx context.Context, key string, encodedKey, encodedValue []byte) error {
 	record := map[string]interface{}{
 		"value": base64.StdEncoding.EncodeToString(encodedValue),
 	}
@@ -37,12 +37,12 @@ func (p *Publisher) Send(ctx context.Context, key string, encodedKey, encodedVal
 		record["key"] = key
 	}
 	body, _ := json.Marshal(map[string]interface{}{"records": []interface{}{record}})
-	url := fmt.Sprintf("%s/topics/%s", p.restURL, p.topic)
+	url := fmt.Sprintf("%s/topics/%s", s.restURL, s.topic)
 	req, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/vnd.kafka.binary.v2+json")
-	req.Header.Set("Authorization", "Basic "+p.auth)
+	req.Header.Set("Authorization", "Basic "+s.auth)
 
-	resp, err := p.client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return err
 	}

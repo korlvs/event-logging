@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  event-sink:
+    build:
+      context: .
+      dockerfile: services/event-sink/Dockerfile
+    environment:
+      DATABASE_URL: postgres://user:password@your-postgres-host:5432/eventsink?sslmode=disable
+      KAFKA_BROKERS: your-kafka-broker:9092
+      KAFKA_TOPIC: events
+      KAFKA_GROUP: event-sink-group
+      PORT: 8080
+    ports:
+      - "8080:8080"
+    restart: on-failure

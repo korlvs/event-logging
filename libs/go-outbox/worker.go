@@ -9,22 +9,20 @@ import (
 )
 
 type Worker struct {
-	db            *gorm.DB
-	pub           *Publisher
-	cfg           Config
-	schemaIDKey   int
-	schemaIDValue int
-	stopCh        chan struct{}
+	db      *gorm.DB
+	sender  Sender
+	encoder Encoder
+	cfg     Config
+	stopCh  chan struct{}
 }
 
-func NewWorker(db *gorm.DB, pub *Publisher, cfg Config, schemaIDKey, schemaIDValue int) *Worker {
+func NewWorker(db *gorm.DB, sender Sender, encoder Encoder, cfg Config) *Worker {
 	return &Worker{
-		db:            db,
-		pub:           pub,
-		cfg:           cfg,
-		schemaIDKey:   schemaIDKey,
-		schemaIDValue: schemaIDValue,
-		stopCh:        make(chan struct{}),
+		db:      db,
+		sender:  sender,
+		encoder: encoder,
+		cfg:     cfg,
+		stopCh:  make(chan struct{}),
 	}
 }
 
@@ -53,9 +51,12 @@ func (w *Worker) processBatch() {
 		return
 	}
 	for _, rec := range records {
-		encodedKey := EncodeMessage(w.schemaIDKey, []byte(rec.EventKey))
-		encodedValue := EncodeMessage(w.schemaIDValue, rec.Payload)
-		if err := w.pub.Send(ctx, rec.EventKey, encodedKey, encodedValue); err != nil {
+		encodedKey, encodedValue, err := w.encoder.Encode(rec.EventKey, rec.Payload)
+		if err != nil {
+			log.Printf("encode failed %s: %v", rec.ID, err)
+			continue
+		}
+		if err := w.sender.Send(ctx, rec.EventKey, encodedKey, encodedValue); err != nil {
 			log.Printf("send failed %s: %v", rec.ID, err)
 			continue
 		}

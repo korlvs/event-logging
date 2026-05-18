@@ -1,12 +1,19 @@
 package outbox
 
 type Config struct {
+	// Общие
+	Mode       string // "schema-registry" или "binary"
+	KafkaTopic string
+	Workers    int
+	BatchSize  int
+
+	// Для режима schema-registry
 	KafkaRestURL  string
-	KafkaTopic    string
 	KafkaUsername string
 	KafkaPassword string
-	SchemaIDKey   int // ID схемы ключа (Avro "string")
-	SchemaIDValue int // ID схемы значения (Protobuf)
-	Workers       int
-	BatchSize     int
+	SchemaIDKey   int
+	SchemaIDValue int
+
+	// Для режима binary
+	KafkaBrokers []string
 }

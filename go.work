@@ -1,0 +1,7 @@
+go 1.25
+
+use (
+	./contracts/event
+	./libs/go-outbox
+	./services/event-sink
+)

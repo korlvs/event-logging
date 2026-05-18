@@ -2,12 +2,11 @@ package outbox
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"sync"
 
 	"github.com/golang-migrate/migrate/v4"
-	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	eventpb "github.com/korlvs/event-logging/contracts/event"
 	"google.golang.org/protobuf/proto"
@@ -20,76 +19,77 @@ var (
 )
 
 type Outbox struct {
-	db            *gorm.DB
-	sqlDB         *sql.DB
-	cfg           Config
-	pub           *Publisher
-	worker        *Worker
-	schemaIDKey   int
-	schemaIDValue int
+	db      *gorm.DB
+	cfg     Config
+	sender  Sender
+	worker  *Worker
+	encoder Encoder
 }
 
 func Init(db *gorm.DB, cfg Config) error {
 	var err error
 	once.Do(func() {
-		sqlDB, err := db.DB()
-		if err != nil {
-			return
-		}
-		globalInstance = &Outbox{
-			db:            db,
-			sqlDB:         sqlDB,
-			cfg:           cfg,
-			schemaIDKey:   cfg.SchemaIDKey,
-			schemaIDValue: cfg.SchemaIDValue,
-		}
+		globalInstance = &Outbox{db: db, cfg: cfg}
 		err = globalInstance.setup()
 	})
 	return err
 }
 
 func (o *Outbox) setup() error {
-	// Применяем миграции
-	driver, err := postgres.WithInstance(o.sqlDB, &postgres.Config{})
+	// 1. Миграции
+	driver, err := iofs.New(MigrationsFS, "migrations")
 	if err != nil {
-		return fmt.Errorf("failed to create postgres driver: %w", err)
+		return err
 	}
-	src, err := iofs.New(MigrationsFS, "migrations")
+	sqlDB, _ := o.db.DB()
+	dsn := sqlDB.Driver().(interface{ Name() string }).Name()
+	m, err := migrate.NewWithSourceInstance("iofs", driver, dsn)
 	if err != nil {
-		return fmt.Errorf("failed to create source driver: %w", err)
-	}
-	m, err := migrate.NewWithInstance("iofs", src, "postgres", driver)
-	if err != nil {
-		return fmt.Errorf("failed to create migrate instance: %w", err)
+		return err
 	}
 	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
-		return fmt.Errorf("failed to apply migrations: %w", err)
+		return err
 	}
-
-	// Автомиграция через GORM (на всякий случай)
 	if err := o.db.AutoMigrate(&OutboxRecord{}); err != nil {
 		return err
 	}
 
-	o.pub = NewPublisher(o.cfg)
-	o.worker = NewWorker(o.db, o.pub, o.cfg, o.schemaIDKey, o.schemaIDValue)
+	// 2. Выбор режима
+	switch o.cfg.Mode {
+	case "schema-registry":
+		o.encoder = NewSchemaRegistryEncoder(o.cfg.SchemaIDKey, o.cfg.SchemaIDValue)
+		sender, err := NewRestSender(o.cfg)
+		if err != nil {
+			return err
+		}
+		o.sender = sender
+	case "binary":
+		o.encoder = NewBinaryEncoder()
+		sender, err := NewSaramaSender(o.cfg.KafkaBrokers, o.cfg.KafkaTopic)
+		if err != nil {
+			return err
+		}
+		o.sender = sender
+	default:
+		return fmt.Errorf("unknown mode: %s", o.cfg.Mode)
+	}
+
+	o.worker = NewWorker(o.db, o.sender, o.encoder, o.cfg)
 	go o.worker.Start()
 	return nil
 }
 
-// PublishEvent сохраняет событие в outbox (принимает protobuf-сообщение)
 func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		return ErrNotInitialized
 	}
-	// Сериализуем событие в protobuf
-	valueBytes, err := proto.Marshal(event)
+	protoBytes, err := proto.Marshal(event)
 	if err != nil {
-		return fmt.Errorf("failed to marshal event: %w", err)
+		return err
 	}
 	record := OutboxRecord{
 		EventKey: key,
-		Payload:  valueBytes,
+		Payload:  protoBytes,
 	}
 	return globalInstance.db.WithContext(ctx).Create(&record).Error
 }
@@ -97,5 +97,8 @@ func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 func Shutdown() {
 	if globalInstance != nil && globalInstance.worker != nil {
 		globalInstance.worker.Stop()
+	}
+	if closer, ok := globalInstance.sender.(interface{ Close() error }); ok {
+		closer.Close()
 	}
 }
