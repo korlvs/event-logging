@@ -3,23 +3,49 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
 	"syscall"
 
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	echoSwagger "github.com/swaggo/echo-swagger"
+	"github.com/swaggo/swag"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
+	oapi "github.com/korlvs/event-logging/services/event-sink/api"
 	"github.com/korlvs/event-logging/services/event-sink/internal/api"
 	"github.com/korlvs/event-logging/services/event-sink/internal/consumer"
+	"github.com/korlvs/event-logging/services/event-sink/internal/model"
 	"github.com/korlvs/event-logging/services/event-sink/internal/repository"
 )
+
+type SwaggerInfo struct{}
+
+func (si *SwaggerInfo) ReadDoc() string {
+	doc, err := api.GetSwagger()
+	if err != nil {
+		log.Fatalf("Error fetching Swagger spec: %v", err)
+		return ""
+	}
+
+	doc.OpenAPI = "3.0.0"
+	swaggerJSON, err := doc.MarshalJSON()
+	if err != nil {
+		log.Fatalf("Error marshaling Swagger spec: %v", err)
+		return ""
+	}
+
+	res := string(swaggerJSON)
+	return res
+}
+
+func init() {
+	swag.Register(swag.Name, &SwaggerInfo{})
+}
 
 func main() {
 	dsn := os.Getenv("DATABASE_URL")
@@ -31,12 +57,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	// Миграции
-	m, err := migrate.New("file://internal/migrations", dsn)
-	if err != nil {
-		log.Fatal(err)
-	}
-	if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+	// AutoMigrate модели StoredEvent
+	if err := db.AutoMigrate(&model.StoredEvent{}); err != nil {
 		log.Fatal(err)
 	}
 
@@ -83,7 +105,6 @@ func main() {
 				log.Printf("rest consumer error: %v", err)
 			}
 		}()
-
 	case "binary":
 		kafkaBrokersEnv := os.Getenv("KAFKA_BROKERS")
 		if kafkaBrokersEnv == "" {
@@ -108,7 +129,6 @@ func main() {
 				log.Printf("sarama consumer error: %v", err)
 			}
 		}()
-
 	default:
 		log.Fatalf("unknown MODE: %s. Allowed: binary, schema-registry", mode)
 	}
@@ -117,7 +137,18 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 	srv := api.NewServer(db)
+
+	// Регистрируем сгенерированные маршруты (ListEvents, GetEventById)
 	api.RegisterHandlers(e, srv)
+
+	// Вручную добавляем health check
+	e.GET("/health", srv.Health)
+
+	// Swagger UI и спецификация
+	e.GET("/swagger/*", echoSwagger.WrapHandler)
+	e.GET("/openapi.yaml", func(c echo.Context) error {
+		return c.Blob(http.StatusOK, "text/yaml", oapi.OpenAPISpec)
+	})
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

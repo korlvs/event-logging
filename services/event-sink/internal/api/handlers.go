@@ -16,18 +16,29 @@ func NewServer(db *gorm.DB) *Server {
 	return &Server{db: db}
 }
 
+// Health возвращает статус сервиса
+func (s *Server) Health(ctx echo.Context) error {
+	return ctx.JSON(http.StatusOK, map[string]string{"status": "ok"})
+}
+
 func (s *Server) ListEvents(ctx echo.Context, params ListEventsParams) error {
 	query := s.db.WithContext(ctx.Request().Context()).Model(&model.StoredEvent{})
 
 	if params.SourceSystem != nil {
 		query = query.Where("source_system = ?", *params.SourceSystem)
 	}
-	if params.ChangeTag != nil {
-		query = query.Where("change_tag = ?", *params.ChangeTag)
+	if params.EventType != nil {
+		query = query.Where("event_type = ?", *params.EventType)
+	}
+	if params.Status != nil {
+		query = query.Where("status = ?", *params.Status)
+	}
+	if params.Tag != nil {
+		query = query.Where("tag = ?", *params.Tag)
 	}
 	if params.Search != nil {
 		search := "%" + *params.Search + "%"
-		query = query.Where("state_before ILIKE ? OR state_after ILIKE ?", search, search)
+		query = query.Where("initiator ILIKE ? OR description ILIKE ?", search, search)
 	}
 	if params.From != nil {
 		query = query.Where("event_time >= ?", *params.From)
@@ -36,25 +47,28 @@ func (s *Server) ListEvents(ctx echo.Context, params ListEventsParams) error {
 		query = query.Where("event_time <= ?", *params.To)
 	}
 
+	// пагинация
+	page := 1
+	if params.Page != nil {
+		page = *params.Page
+	}
+	pageSize := 20
+	if params.PageSize != nil {
+		pageSize = *params.PageSize
+	}
+	offset := (page - 1) * pageSize
+
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
-	limit := 100
-	if params.Limit != nil {
-		limit = *params.Limit
-	}
-	offset := 0
-	if params.Offset != nil {
-		offset = *params.Offset
-	}
-
 	var events []model.StoredEvent
-	if err := query.Limit(limit).Offset(offset).Order("event_time DESC").Find(&events).Error; err != nil {
+	if err := query.Limit(pageSize).Offset(offset).Order("event_time DESC").Find(&events).Error; err != nil {
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
 
+	// преобразование в API-модель
 	items := make([]StoredEvent, len(events))
 	for i, e := range events {
 		items[i] = StoredEvent{
@@ -65,14 +79,26 @@ func (s *Server) ListEvents(ctx echo.Context, params ListEventsParams) error {
 			Initiator:     e.Initiator,
 			StateBefore:   &e.StateBefore,
 			StateAfter:    &e.StateAfter,
-			ChangeTag:     e.ChangeTag,
+			Tag:           e.Tag,
+			EventType:     e.EventType,
+			Status:        &e.Status,
+			Description:   &e.Description,
+			TraceId:       &e.TraceID,
 			CreatedAt:     &e.CreatedAt,
 		}
 	}
 
-	return ctx.JSON(http.StatusOK, EventListResponse{Items: items, Total: total})
+	totalPages := (total + int64(pageSize) - 1) / int64(pageSize)
+	return ctx.JSON(http.StatusOK, EventListResponse{
+		Items:      items,
+		Total:      total,
+		Page:       page,
+		PageSize:   pageSize,
+		TotalPages: int(totalPages),
+	})
 }
 
+// GetEventById – существующий метод
 func (s *Server) GetEventById(ctx echo.Context, id string) error {
 	var event model.StoredEvent
 	if err := s.db.WithContext(ctx.Request().Context()).First(&event, "id = ?", id).Error; err != nil {
@@ -81,7 +107,6 @@ func (s *Server) GetEventById(ctx echo.Context, id string) error {
 		}
 		return ctx.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
-
 	resp := StoredEvent{
 		Id:            event.ID,
 		SourceSystem:  event.SourceSystem,
@@ -90,7 +115,11 @@ func (s *Server) GetEventById(ctx echo.Context, id string) error {
 		Initiator:     event.Initiator,
 		StateBefore:   &event.StateBefore,
 		StateAfter:    &event.StateAfter,
-		ChangeTag:     event.ChangeTag,
+		Tag:           event.Tag,
+		EventType:     event.EventType,
+		Status:        &event.Status,
+		Description:   &event.Description,
+		TraceId:       &event.TraceID,
 		CreatedAt:     &event.CreatedAt,
 	}
 	return ctx.JSON(http.StatusOK, resp)

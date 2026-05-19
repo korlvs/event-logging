@@ -21,32 +21,45 @@ import (
 
 // EventListResponse defines model for EventListResponse.
 type EventListResponse struct {
-	Items []StoredEvent `json:"items"`
-	Total int64         `json:"total"`
+	Items      []StoredEvent `json:"items"`
+	Page       int           `json:"page"`
+	PageSize   int           `json:"page_size"`
+	Total      int64         `json:"total"`
+	TotalPages int           `json:"total_pages"`
 }
 
 // StoredEvent defines model for StoredEvent.
 type StoredEvent struct {
-	ChangeTag     string     `json:"change_tag"`
 	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	Description   *string    `json:"description"`
 	EventTime     time.Time  `json:"event_time"`
+	EventType     string     `json:"event_type"`
 	Id            string     `json:"id"`
 	Initiator     string     `json:"initiator"`
 	PublishedTime time.Time  `json:"published_time"`
 	SourceSystem  string     `json:"source_system"`
 	StateAfter    *string    `json:"state_after"`
 	StateBefore   *string    `json:"state_before"`
+	Status        *string    `json:"status"`
+	Tag           string     `json:"tag"`
+
+	// TraceId Опциональный идентификатор трассировки
+	TraceId *string `json:"trace_id"`
 }
 
 // ListEventsParams defines parameters for ListEvents.
 type ListEventsParams struct {
-	SourceSystem *string    `form:"source_system,omitempty" json:"source_system,omitempty"`
-	ChangeTag    *string    `form:"change_tag,omitempty" json:"change_tag,omitempty"`
-	Search       *string    `form:"search,omitempty" json:"search,omitempty"`
-	From         *time.Time `form:"from,omitempty" json:"from,omitempty"`
-	To           *time.Time `form:"to,omitempty" json:"to,omitempty"`
-	Limit        *int       `form:"limit,omitempty" json:"limit,omitempty"`
-	Offset       *int       `form:"offset,omitempty" json:"offset,omitempty"`
+	SourceSystem *string `form:"source_system,omitempty" json:"source_system,omitempty"`
+	EventType    *string `form:"event_type,omitempty" json:"event_type,omitempty"`
+	Status       *string `form:"status,omitempty" json:"status,omitempty"`
+
+	// Search Поиск по initiator и description
+	Search   *string    `form:"search,omitempty" json:"search,omitempty"`
+	Tag      *string    `form:"tag,omitempty" json:"tag,omitempty"`
+	From     *time.Time `form:"from,omitempty" json:"from,omitempty"`
+	To       *time.Time `form:"to,omitempty" json:"to,omitempty"`
+	Page     *int       `form:"page,omitempty" json:"page,omitempty"`
+	PageSize *int       `form:"page_size,omitempty" json:"page_size,omitempty"`
 }
 
 // ServerInterface represents all server handlers.
@@ -57,6 +70,9 @@ type ServerInterface interface {
 
 	// (GET /events/{id})
 	GetEventById(ctx echo.Context, id string) error
+
+	// (GET /health)
+	Health(ctx echo.Context) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -77,11 +93,18 @@ func (w *ServerInterfaceWrapper) ListEvents(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter source_system: %s", err))
 	}
 
-	// ------------- Optional query parameter "change_tag" -------------
+	// ------------- Optional query parameter "event_type" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "change_tag", ctx.QueryParams(), &params.ChangeTag)
+	err = runtime.BindQueryParameter("form", true, false, "event_type", ctx.QueryParams(), &params.EventType)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter change_tag: %s", err))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter event_type: %s", err))
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", ctx.QueryParams(), &params.Status)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter status: %s", err))
 	}
 
 	// ------------- Optional query parameter "search" -------------
@@ -89,6 +112,13 @@ func (w *ServerInterfaceWrapper) ListEvents(ctx echo.Context) error {
 	err = runtime.BindQueryParameter("form", true, false, "search", ctx.QueryParams(), &params.Search)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter search: %s", err))
+	}
+
+	// ------------- Optional query parameter "tag" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "tag", ctx.QueryParams(), &params.Tag)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter tag: %s", err))
 	}
 
 	// ------------- Optional query parameter "from" -------------
@@ -105,18 +135,18 @@ func (w *ServerInterfaceWrapper) ListEvents(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter to: %s", err))
 	}
 
-	// ------------- Optional query parameter "limit" -------------
+	// ------------- Optional query parameter "page" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "limit", ctx.QueryParams(), &params.Limit)
+	err = runtime.BindQueryParameter("form", true, false, "page", ctx.QueryParams(), &params.Page)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter limit: %s", err))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter page: %s", err))
 	}
 
-	// ------------- Optional query parameter "offset" -------------
+	// ------------- Optional query parameter "page_size" -------------
 
-	err = runtime.BindQueryParameter("form", true, false, "offset", ctx.QueryParams(), &params.Offset)
+	err = runtime.BindQueryParameter("form", true, false, "page_size", ctx.QueryParams(), &params.PageSize)
 	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter offset: %s", err))
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter page_size: %s", err))
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
@@ -137,6 +167,15 @@ func (w *ServerInterfaceWrapper) GetEventById(ctx echo.Context) error {
 
 	// Invoke the callback with all the unmarshaled arguments
 	err = w.Handler.GetEventById(ctx, id)
+	return err
+}
+
+// Health converts echo context to params.
+func (w *ServerInterfaceWrapper) Health(ctx echo.Context) error {
+	var err error
+
+	// Invoke the callback with all the unmarshaled arguments
+	err = w.Handler.Health(ctx)
 	return err
 }
 
@@ -170,22 +209,26 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 
 	router.GET(baseURL+"/events", wrapper.ListEvents)
 	router.GET(baseURL+"/events/:id", wrapper.GetEventById)
+	router.GET(baseURL+"/health", wrapper.Health)
 
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/7SVTWvbTBDHv0qY5zmqltKUHnRrIZTQQkpzDMGMtSN7UmlXmR0FhNF3L7tyEsuSShra",
-	"22o985+X/c14D4WrG2fJqod8D77YUY3xePlIVr+x1x/kG2c9hctGXEOiTNGElerx4X+hEnL4L32RTQ+a",
-	"6Y06IRNloU9Au4YgBxTBLn47xSpolE5qVMiBrX78AM+WbJW2JND3CQg9tCxkIL89BH8SuHu2d5t7KmKo",
-	"48iTIood2i2tFbfh6+DrVdhug28hhEpmjTrKzaDSO+WaICSD5tpWHeQqLSVTDQqR19F6SWPiw2Y2Hbas",
-	"jOpk9tem3VTsd2T+MJh3rRS09p1XqmeVvaLSGkulGNm2VYWbihZLHuw3VDqhVzicPqmB06RGXZxUetyY",
-	"5PhJpzj0sYuli2WyhpQG1s9u2P48+/T9ChJ4JPHsLORwvspWWajINWSxYcjhYpWtLkIOqLuIUBpTi8ct",
-	"RU4CYKjs7JWBHMIUXQ4mwUuwJiXxkN/ugUOQh5akgwQs1rErJ5UPEzTzLn0yL3DUgDd4e0Ipdm/xLMWN",
-	"830Nfkti6v6aVMU160jNUIltpZCfZ9nchpnXcWXpaUFoTuYuYD1sz0jH+yyLK8dZPewibJqKi4hKeu8D",
-	"cfsj8d+t0+l+jmgb8oVwowO911/DbZ88IZru2fSLnH6hAdPP3ZVZIDUw/9KPOKcvgzuM9jI1/7Ido3+X",
-	"xUb0/a8AAAD//xTvU+3yBgAA",
+	"H4sIAAAAAAAC/7RWzW7bRhB+FWLbIyvRdtEDby1gtEYLuKiPhiGsyJG0Lsmld4dGFIGAbQS5JM+QvIIR",
+	"JADjwPIrDN8o2CVliRJpy05yW+7MfDP7zR9nLJBxKhNIUDN/xnQwgZjb4/45JPiP0Pgf6FQmGsxlqmQK",
+	"CgVYFYEQNw8/Kxgxn/3UX8L2a8z+EUoFoYVluctwmgLzGVeKT813ysfWRX0vEoQxqIVkoMXLDjFK5JER",
+	"jaSKOVbC335lbpfuwADqNrDcZQrOMqEgZP5x/ayFhzrE1XiagCf3HuXwFAL7ytVHb/AXKOAI4YBjI/yQ",
+	"I/yCIjb4Cnh4mERT5qPK4N6BRiWSsXEQgg6USFHIxIAkWRTxYQSd+mBCGVj0Lp9dNvZ6tikWYft1IlBw",
+	"lKpVmmbDSOgJhE+MRctMBTDQU40QtyJr5AgDPkJQWzFS6Q9hJBVsbZDprVSRj1tjRMUDGFTENTLI6B3d",
+	"la+poDnd0jV9Kd/SbfmGPjtU0Ef6RLflFRXlKyrohq7LK5qXF055VV7QdXlZXlJRXtCcPtANFcx9LL71",
+	"cg/ZOr+NetlI2mqOq7c2amWzH3JbFiNpORFoAqvmjHMkkv+d3/89YC47B6UrLnZ6Xs8zdMkUEp4K5rO9",
+	"ntfbsz2IE5uCvnVoj2OwfWQ6jBs2D0LmMzPB9isVY6V4DAhKM/94xoRxcpaBmhqueGy5WXt/Nb1akpi7",
+	"7QArBDzDuq6tRyzXSuY9zakoL+nGoTuaO/dJcahwVlXddpfAVTB5TrBVxp9sNlKyyew2nd8Zg/xuUPV4",
+	"X4KFMOJZhMzfcVksEhFnsT1vro1uwMWiaEHd9VwW8xc1rOc94uTEdGu1im2573qeXSIywXq78DSNRGBr",
+	"v3+qq4Ww9PvQbt5c9rZXm3V2+Le5zd1Fz/VnIsw7G+9PqPruj+lB2NF6pomXbNnxs5xH1cTqLq4fSUfj",
+	"V+UhIibAI5x0cvBXJf7GSJs/DcvtsznNW8Zta+R5/jUAAP//niiFsvkJAAA=",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

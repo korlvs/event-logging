@@ -2,7 +2,7 @@
 
 # Установка путей
 PROTO_DIR := contracts/event
-PROTO_OUT := contracts/event
+PROTO_OUT := contracts/event/v1
 OAPI_INPUT := services/event-sink/api/openapi.yaml
 OAPI_OUT := services/event-sink/internal/api/types.gen.go
 
@@ -18,7 +18,7 @@ help:
 
 proto:
 	@echo "Генерация protobuf кода..."
-	@mkdir -p $(PROTO_OUT)/event/v1
+	@mkdir -p $(PROTO_OUT)
 	protoc --proto_path=$(PROTO_DIR) \
 		--go_out=$(PROTO_OUT) --go_opt=paths=source_relative \
 		--go-grpc_out=$(PROTO_OUT) --go-grpc_opt=paths=source_relative \

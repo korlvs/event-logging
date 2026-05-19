@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/IBM/sarama"
-	event "github.com/korlvs/event-logging/contracts/event"
+	event "github.com/korlvs/event-logging/contracts/event/v1"
 	"github.com/korlvs/event-logging/services/event-sink/internal/model"
 	"github.com/korlvs/event-logging/services/event-sink/internal/repository"
 	"google.golang.org/protobuf/proto"
@@ -67,7 +67,11 @@ func (h *saramaHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sar
 			Initiator:     pbEvent.Initiator,
 			StateBefore:   pbEvent.StateBefore,
 			StateAfter:    pbEvent.StateAfter,
-			ChangeTag:     pbEvent.ChangeTag,
+			Tag:           pbEvent.Tag,
+			EventType:     pbEvent.EventType,
+			Status:        pbEvent.Status,
+			Description:   pbEvent.Description,
+			TraceID:       pbEvent.TraceId,
 		}
 		if err := h.repo.Save(sess.Context(), stored); err != nil {
 			log.Printf("save error: %v", err)

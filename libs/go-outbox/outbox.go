@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sync"
 
-	eventpb "github.com/korlvs/event-logging/contracts/event"
+	eventpb "github.com/korlvs/event-logging/contracts/event/v1"
 	"google.golang.org/protobuf/proto"
 	"gorm.io/gorm"
 )

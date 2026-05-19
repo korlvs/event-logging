@@ -31,7 +31,11 @@ type Event struct {
 	Initiator     string                 `protobuf:"bytes,5,opt,name=initiator,proto3" json:"initiator,omitempty"`
 	StateBefore   string                 `protobuf:"bytes,6,opt,name=state_before,json=stateBefore,proto3" json:"state_before,omitempty"`
 	StateAfter    string                 `protobuf:"bytes,7,opt,name=state_after,json=stateAfter,proto3" json:"state_after,omitempty"`
-	ChangeTag     string                 `protobuf:"bytes,8,opt,name=change_tag,json=changeTag,proto3" json:"change_tag,omitempty"`
+	Tag           string                 `protobuf:"bytes,8,opt,name=tag,proto3" json:"tag,omitempty"`
+	EventType     string                 `protobuf:"bytes,9,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
+	Status        string                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
+	Description   string                 `protobuf:"bytes,11,opt,name=description,proto3" json:"description,omitempty"`
+	TraceId       string                 `protobuf:"bytes,12,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -115,9 +119,37 @@ func (x *Event) GetStateAfter() string {
 	return ""
 }
 
-func (x *Event) GetChangeTag() string {
+func (x *Event) GetTag() string {
 	if x != nil {
-		return x.ChangeTag
+		return x.Tag
+	}
+	return ""
+}
+
+func (x *Event) GetEventType() string {
+	if x != nil {
+		return x.EventType
+	}
+	return ""
+}
+
+func (x *Event) GetStatus() string {
+	if x != nil {
+		return x.Status
+	}
+	return ""
+}
+
+func (x *Event) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *Event) GetTraceId() string {
+	if x != nil {
+		return x.TraceId
 	}
 	return ""
 }
@@ -126,7 +158,7 @@ var File_event_proto protoreflect.FileDescriptor
 
 const file_event_proto_rawDesc = "" +
 	"\n" +
-	"\vevent.proto\x12\bevent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbb\x02\n" +
+	"\vevent.proto\x12\bevent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa2\x03\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rsource_system\x18\x02 \x01(\tR\fsourceSystem\x129\n" +
@@ -136,9 +168,14 @@ const file_event_proto_rawDesc = "" +
 	"\tinitiator\x18\x05 \x01(\tR\tinitiator\x12!\n" +
 	"\fstate_before\x18\x06 \x01(\tR\vstateBefore\x12\x1f\n" +
 	"\vstate_after\x18\a \x01(\tR\n" +
-	"stateAfter\x12\x1d\n" +
+	"stateAfter\x12\x10\n" +
+	"\x03tag\x18\b \x01(\tR\x03tag\x12\x1d\n" +
 	"\n" +
-	"change_tag\x18\b \x01(\tR\tchangeTagB:Z8github.com/korlvs/event-logging/contracts/event/event/v1b\x06proto3"
+	"event_type\x18\t \x01(\tR\teventType\x12\x16\n" +
+	"\x06status\x18\n" +
+	" \x01(\tR\x06status\x12 \n" +
+	"\vdescription\x18\v \x01(\tR\vdescription\x12\x19\n" +
+	"\btrace_id\x18\f \x01(\tR\atraceIdB:Z8github.com/korlvs/event-logging/contracts/event/event/v1b\x06proto3"
 
 var (
 	file_event_proto_rawDescOnce sync.Once

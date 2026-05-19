@@ -11,7 +11,7 @@ import (
 	"net/http"
 	"time"
 
-	event "github.com/korlvs/event-logging/contracts/event"
+	event "github.com/korlvs/event-logging/contracts/event/v1"
 	"github.com/korlvs/event-logging/services/event-sink/internal/model"
 	"github.com/korlvs/event-logging/services/event-sink/internal/repository"
 	"google.golang.org/protobuf/proto"
@@ -183,7 +183,11 @@ func (c *RestConsumer) Start(ctx context.Context) error {
 				Initiator:     pbEvent.Initiator,
 				StateBefore:   pbEvent.StateBefore,
 				StateAfter:    pbEvent.StateAfter,
-				ChangeTag:     pbEvent.ChangeTag,
+				Tag:           pbEvent.Tag,
+				EventType:     pbEvent.EventType,
+				Status:        pbEvent.Status,
+				Description:   pbEvent.Description,
+				TraceID:       pbEvent.TraceId,
 			}
 			if err := c.repo.Save(ctx, stored); err != nil {
 				// логируем ошибку, но продолжаем

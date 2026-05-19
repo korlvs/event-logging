@@ -14,5 +14,9 @@ message Event {
     string initiator = 5;
     string state_before = 6;
     string state_after = 7;
-    string change_tag = 8;
+    string tag = 8; 
+    string event_type = 9;
+    string status = 10;
+    string description = 11;
+    string trace_id = 12; 
 }

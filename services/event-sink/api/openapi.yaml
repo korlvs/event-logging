@@ -3,6 +3,19 @@ info:
   title: Event Sink API
   version: 1.0.0
 paths:
+  /health:
+    get:
+      operationId: health
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
   /events:
     get:
       operationId: listEvents
@@ -10,10 +23,17 @@ paths:
         - name: source_system
           in: query
           schema: { type: string }
-        - name: change_tag
+        - name: event_type
+          in: query
+          schema: { type: string }
+        - name: status
           in: query
           schema: { type: string }
         - name: search
+          in: query
+          description: Поиск по initiator и description
+          schema: { type: string }
+        - name: tag
           in: query
           schema: { type: string }
         - name: from
@@ -22,12 +42,12 @@ paths:
         - name: to
           in: query
           schema: { type: string, format: date-time }
-        - name: limit
+        - name: page
           in: query
-          schema: { type: integer, default: 100 }
-        - name: offset
+          schema: { type: integer, default: 1, minimum: 1 }
+        - name: page_size
           in: query
-          schema: { type: integer, default: 0 }
+          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
       responses:
         '200':
           description: OK
@@ -35,6 +55,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventListResponse'
+                
   /events/{id}:
     get:
       operationId: getEventById
@@ -60,37 +81,31 @@ components:
         - event_time
         - published_time
         - initiator
-        - change_tag
+        - tag
+        - event_type
       properties:
-        id:
-          type: string
-        source_system:
-          type: string
-        event_time:
-          type: string
-          format: date-time
-        published_time:
-          type: string
-          format: date-time
-        initiator:
-          type: string
-        state_before:
-          type: string
-          nullable: true
-        state_after:
-          type: string
-          nullable: true
-        change_tag:
-          type: string
-        created_at:
-          type: string
-          format: date-time
-          readOnly: true
+        id: { type: string }
+        source_system: { type: string }
+        event_time: { type: string, format: date-time }
+        published_time: { type: string, format: date-time }
+        initiator: { type: string }
+        state_before: { type: string, nullable: true }
+        state_after: { type: string, nullable: true }
+        tag: { type: string }
+        event_type: { type: string }
+        status: { type: string, nullable: true }
+        description: { type: string, nullable: true }
+        trace_id: { type: string, nullable: true, description: "Опциональный идентификатор трассировки" }
+        created_at: { type: string, format: date-time, readOnly: true }
+
     EventListResponse:
       type: object
       required:
         - items
         - total
+        - page
+        - page_size
+        - total_pages
       properties:
         items:
           type: array
@@ -99,3 +114,9 @@ components:
         total:
           type: integer
           format: int64
+        page:
+          type: integer
+        page_size:
+          type: integer
+        total_pages:
+          type: integer
