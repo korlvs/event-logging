@@ -188,6 +188,7 @@ func (c *RestConsumer) Start(ctx context.Context) error {
 				Status:        pbEvent.Status,
 				Description:   pbEvent.Description,
 				TraceID:       pbEvent.TraceId,
+				InitiatorName: pbEvent.InitiatorName,
 			}
 			if err := c.repo.Save(ctx, stored); err != nil {
 				// логируем ошибку, но продолжаем

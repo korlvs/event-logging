@@ -36,6 +36,7 @@ type Event struct {
 	Status        string                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
 	Description   string                 `protobuf:"bytes,11,opt,name=description,proto3" json:"description,omitempty"`
 	TraceId       string                 `protobuf:"bytes,12,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
+	InitiatorName string                 `protobuf:"bytes,13,opt,name=initiator_name,json=initiatorName,proto3" json:"initiator_name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -154,11 +155,18 @@ func (x *Event) GetTraceId() string {
 	return ""
 }
 
+func (x *Event) GetInitiatorName() string {
+	if x != nil {
+		return x.InitiatorName
+	}
+	return ""
+}
+
 var File_event_proto protoreflect.FileDescriptor
 
 const file_event_proto_rawDesc = "" +
 	"\n" +
-	"\vevent.proto\x12\bevent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa2\x03\n" +
+	"\vevent.proto\x12\bevent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x03\n" +
 	"\x05Event\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
 	"\rsource_system\x18\x02 \x01(\tR\fsourceSystem\x129\n" +
@@ -175,7 +183,8 @@ const file_event_proto_rawDesc = "" +
 	"\x06status\x18\n" +
 	" \x01(\tR\x06status\x12 \n" +
 	"\vdescription\x18\v \x01(\tR\vdescription\x12\x19\n" +
-	"\btrace_id\x18\f \x01(\tR\atraceIdB:Z8github.com/korlvs/event-logging/contracts/event/event/v1b\x06proto3"
+	"\btrace_id\x18\f \x01(\tR\atraceId\x12%\n" +
+	"\x0einitiator_name\x18\r \x01(\tR\rinitiatorNameB:Z8github.com/korlvs/event-logging/contracts/event/event/v1b\x06proto3"
 
 var (
 	file_event_proto_rawDescOnce sync.Once

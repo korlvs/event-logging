@@ -55,7 +55,7 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/EventListResponse'
-                
+
   /events/{id}:
     get:
       operationId: getEventById
@@ -97,6 +97,10 @@ components:
         description: { type: string, nullable: true }
         trace_id: { type: string, nullable: true, description: "Опциональный идентификатор трассировки" }
         created_at: { type: string, format: date-time, readOnly: true }
+        initiator_name:
+          type: string
+          nullable: true
+          description: "Читаемое имя инициатора (опционально)"
 
     EventListResponse:
       type: object

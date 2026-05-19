@@ -13,13 +13,14 @@ type StoredEvent struct {
 	EventTime     time.Time `gorm:"index;not null"`
 	PublishedTime time.Time `gorm:"index;not null"`
 	Initiator     string    `gorm:"not null"`
+	InitiatorName string    `gorm:"index"`
 	StateBefore   string    `gorm:"type:text"`
 	StateAfter    string    `gorm:"type:text"`
 	Tag           string    `gorm:"index;not null"`
 	EventType     string    `gorm:"index;not null"`
 	Status        string    `gorm:"index"`
 	Description   string    `gorm:"type:text"`
-	TraceID       string    `gorm:"index"` // новое поле
+	TraceID       string    `gorm:"index"`
 	CreatedAt     time.Time `gorm:"autoCreateTime"`
 }
 

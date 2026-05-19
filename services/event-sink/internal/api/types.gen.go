@@ -30,18 +30,21 @@ type EventListResponse struct {
 
 // StoredEvent defines model for StoredEvent.
 type StoredEvent struct {
-	CreatedAt     *time.Time `json:"created_at,omitempty"`
-	Description   *string    `json:"description"`
-	EventTime     time.Time  `json:"event_time"`
-	EventType     string     `json:"event_type"`
-	Id            string     `json:"id"`
-	Initiator     string     `json:"initiator"`
-	PublishedTime time.Time  `json:"published_time"`
-	SourceSystem  string     `json:"source_system"`
-	StateAfter    *string    `json:"state_after"`
-	StateBefore   *string    `json:"state_before"`
-	Status        *string    `json:"status"`
-	Tag           string     `json:"tag"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	Description *string    `json:"description"`
+	EventTime   time.Time  `json:"event_time"`
+	EventType   string     `json:"event_type"`
+	Id          string     `json:"id"`
+	Initiator   string     `json:"initiator"`
+
+	// InitiatorName Читаемое имя инициатора (опционально)
+	InitiatorName *string   `json:"initiator_name"`
+	PublishedTime time.Time `json:"published_time"`
+	SourceSystem  string    `json:"source_system"`
+	StateAfter    *string   `json:"state_after"`
+	StateBefore   *string   `json:"state_before"`
+	Status        *string   `json:"status"`
+	Tag           string    `json:"tag"`
 
 	// TraceId Опциональный идентификатор трассировки
 	TraceId *string `json:"trace_id"`
@@ -216,19 +219,20 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

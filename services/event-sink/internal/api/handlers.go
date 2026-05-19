@@ -85,6 +85,7 @@ func (s *Server) ListEvents(ctx echo.Context, params ListEventsParams) error {
 			Description:   &e.Description,
 			TraceId:       &e.TraceID,
 			CreatedAt:     &e.CreatedAt,
+			InitiatorName: &e.InitiatorName,
 		}
 	}
 
@@ -121,6 +122,7 @@ func (s *Server) GetEventById(ctx echo.Context, id string) error {
 		Description:   &event.Description,
 		TraceId:       &event.TraceID,
 		CreatedAt:     &event.CreatedAt,
+		InitiatorName: &event.InitiatorName,
 	}
 	return ctx.JSON(http.StatusOK, resp)
 }

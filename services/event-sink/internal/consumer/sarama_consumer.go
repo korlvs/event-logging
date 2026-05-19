@@ -72,6 +72,7 @@ func (h *saramaHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sar
 			Status:        pbEvent.Status,
 			Description:   pbEvent.Description,
 			TraceID:       pbEvent.TraceId,
+			InitiatorName: pbEvent.InitiatorName,
 		}
 		if err := h.repo.Save(sess.Context(), stored); err != nil {
 			log.Printf("save error: %v", err)
