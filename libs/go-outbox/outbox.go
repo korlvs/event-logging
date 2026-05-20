@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	"github.com/golang-migrate/migrate/v4/source/iofs"
 	eventpb "github.com/korlvs/event-logging/contracts/event/v1"
 	"google.golang.org/protobuf/proto"
 )
@@ -36,7 +33,11 @@ func Init(db *sql.DB, cfg Config) error {
 }
 
 func (o *Outbox) setup() error {
-	// Выбор encoder и sender
+	// Автоматически применяем миграции
+	if err := RunMigrations(o.db); err != nil {
+		return fmt.Errorf("migrations failed: %w", err)
+	}
+
 	switch o.cfg.Mode {
 	case "schema-registry":
 		o.encoder = NewSchemaRegistryEncoder(o.cfg.SchemaIDKey, o.cfg.SchemaIDValue)
@@ -59,19 +60,6 @@ func (o *Outbox) setup() error {
 	o.worker = NewWorker(o.db, o.sender, o.encoder, o.cfg)
 	go o.worker.Start()
 	return nil
-}
-
-// MigrateUp применяет встроенные миграции библиотеки по переданному DSN.
-func MigrateUp(databaseDSN string) error {
-	src, err := iofs.New(MigrationsFS, "migrations")
-	if err != nil {
-		return err
-	}
-	m, err := migrate.NewWithSourceInstance("iofs", src, databaseDSN)
-	if err != nil {
-		return err
-	}
-	return m.Up()
 }
 
 // PublishEvent сохраняет событие вне транзакции.
