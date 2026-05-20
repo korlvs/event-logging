@@ -2,12 +2,15 @@ package outbox
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"sync"
 
+	"github.com/golang-migrate/migrate/v4"
+	_ "github.com/golang-migrate/migrate/v4/database/postgres"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	eventpb "github.com/korlvs/event-logging/contracts/event/v1"
 	"google.golang.org/protobuf/proto"
-	"gorm.io/gorm"
 )
 
 var (
@@ -16,14 +19,14 @@ var (
 )
 
 type Outbox struct {
-	db      *gorm.DB
+	db      *sql.DB
 	cfg     Config
 	sender  Sender
-	worker  *Worker
 	encoder Encoder
+	worker  *Worker
 }
 
-func Init(db *gorm.DB, cfg Config) error {
+func Init(db *sql.DB, cfg Config) error {
 	var err error
 	once.Do(func() {
 		globalInstance = &Outbox{db: db, cfg: cfg}
@@ -33,12 +36,7 @@ func Init(db *gorm.DB, cfg Config) error {
 }
 
 func (o *Outbox) setup() error {
-	// Автоматическое создание таблицы outbox (миграция)
-	if err := o.db.AutoMigrate(&OutboxRecord{}); err != nil {
-		return err
-	}
-
-	// Выбор режима
+	// Выбор encoder и sender
 	switch o.cfg.Mode {
 	case "schema-registry":
 		o.encoder = NewSchemaRegistryEncoder(o.cfg.SchemaIDKey, o.cfg.SchemaIDValue)
@@ -63,6 +61,20 @@ func (o *Outbox) setup() error {
 	return nil
 }
 
+// MigrateUp применяет встроенные миграции библиотеки по переданному DSN.
+func MigrateUp(databaseDSN string) error {
+	src, err := iofs.New(MigrationsFS, "migrations")
+	if err != nil {
+		return err
+	}
+	m, err := migrate.NewWithSourceInstance("iofs", src, databaseDSN)
+	if err != nil {
+		return err
+	}
+	return m.Up()
+}
+
+// PublishEvent сохраняет событие вне транзакции.
 func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		return ErrNotInitialized
@@ -71,18 +83,29 @@ func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if err != nil {
 		return err
 	}
-	record := OutboxRecord{
-		EventKey: key,
-		Payload:  protoBytes,
+	_, err = globalInstance.db.ExecContext(ctx,
+		"INSERT INTO outbox (event_key, payload) VALUES ($1, $2)",
+		key, protoBytes)
+	return err
+}
+
+// PublishEventWithTx сохраняет событие в рамках переданной транзакции.
+func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *eventpb.Event) error {
+	if globalInstance == nil {
+		return ErrNotInitialized
 	}
-	return globalInstance.db.WithContext(ctx).Create(&record).Error
+	protoBytes, err := proto.Marshal(event)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx,
+		"INSERT INTO outbox (event_key, payload) VALUES ($1, $2)",
+		key, protoBytes)
+	return err
 }
 
 func Shutdown() {
 	if globalInstance != nil && globalInstance.worker != nil {
 		globalInstance.worker.Stop()
-	}
-	if closer, ok := globalInstance.sender.(interface{ Close() error }); ok {
-		closer.Close()
 	}
 }

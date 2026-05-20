@@ -5,7 +5,7 @@ go 1.25
 require (
 	github.com/getkin/kin-openapi v0.138.0
 	github.com/golang-migrate/migrate/v4 v4.17.1
-	github.com/korlvs/event-logging/contracts/event v0.2.0
+	github.com/korlvs/event-logging/contracts/event v0.6.0
 	github.com/labstack/echo/v4 v4.15.1
 	github.com/oapi-codegen/runtime v1.4.0
 	google.golang.org/protobuf v1.36.11

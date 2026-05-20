@@ -73,6 +73,8 @@ github.com/josharian/intern v1.0.0/go.mod h1:5DoeVV0s6jJacbCEi61lwdGj/aVlrQvzHFF
 github.com/juju/gnuflag v0.0.0-20171113085948-2ce1bb71843d/go.mod h1:2PavIy+JPciBPrBUjwbNvtwB6RQlve+hkpll6QSNmOE=
 github.com/korlvs/event-logging/contracts/event v0.2.0 h1:fU26yWnlgYSQ9uFGsu77X9lIyiQOeKXByQ4IPmTUu6E=
 github.com/korlvs/event-logging/contracts/event v0.2.0/go.mod h1:9AMVR/b/IBSO3sB1HoFWfIbjDy2XjDbs3m5A02GZoeE=
+github.com/korlvs/event-logging/contracts/event v0.6.0 h1:UfuHJ/ylz2OOFRLsT6jC3ETqeEwCQzceFQQ4JMuREIA=
+github.com/korlvs/event-logging/contracts/event v0.6.0/go.mod h1:9AMVR/b/IBSO3sB1HoFWfIbjDy2XjDbs3m5A02GZoeE=
 github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORNo=
 github.com/kr/pretty v0.2.1/go.mod h1:ipq/a2n7PKx3OHsz4KJII5eveXtPO4qwEXGdVfWzfnI=
 github.com/kr/pretty v0.3.1 h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=
