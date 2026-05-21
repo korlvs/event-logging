@@ -17,5 +17,6 @@ type Config struct {
 	ServiceVersion string // версия сервиса (добавляется в details)
 	Environment    string // production / staging / development
 
-	Schema string
+	Schema    string
+	StoreJSON bool
 }
