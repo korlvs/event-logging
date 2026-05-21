@@ -9,20 +9,18 @@ import (
 )
 
 type Worker struct {
-	db      *sql.DB
-	sender  Sender
-	encoder Encoder
-	cfg     Config
-	stopCh  chan struct{}
+	db     *sql.DB
+	outbox *Outbox
+	cfg    Config
+	stopCh chan struct{}
 }
 
-func NewWorker(db *sql.DB, sender Sender, encoder Encoder, cfg Config) *Worker {
+func NewWorker(db *sql.DB, outbox *Outbox, cfg Config) *Worker {
 	return &Worker{
-		db:      db,
-		sender:  sender,
-		encoder: encoder,
-		cfg:     cfg,
-		stopCh:  make(chan struct{}),
+		db:     db,
+		outbox: outbox,
+		cfg:    cfg,
+		stopCh: make(chan struct{}),
 	}
 }
 
@@ -43,6 +41,15 @@ func (w *Worker) Start() {
 
 func (w *Worker) processBatch() {
 	ctx := context.Background()
+
+	// Если есть флаг проблемы БД – пробуем восстановить таблицу
+	if w.outbox.dbProblem {
+		if err := w.outbox.ensureTable(); err != nil {
+			log.Printf("outbox worker: DB still unavailable: %v", err)
+			return
+		}
+	}
+
 	tableOutbox := fullTableName(w.cfg.Schema, "outbox")
 	selectQuery := fmt.Sprintf(
 		`SELECT id, event_key, payload FROM %s
@@ -54,6 +61,7 @@ func (w *Worker) processBatch() {
 	rows, err := w.db.QueryContext(ctx, selectQuery, w.cfg.BatchSize)
 	if err != nil {
 		log.Printf("outbox worker: failed to fetch pending events: %v", err)
+		w.outbox.dbProblem = true
 		return
 	}
 	defer rows.Close()
@@ -74,6 +82,7 @@ func (w *Worker) processBatch() {
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("outbox worker: rows error: %v", err)
+		w.outbox.dbProblem = true
 		return
 	}
 
@@ -82,19 +91,34 @@ func (w *Worker) processBatch() {
 	}
 	log.Printf("outbox worker: processing %d records", len(records))
 
+	// Проверяем sender, при необходимости пересоздаём
+	sender := w.outbox.GetSender()
+	if sender == nil {
+		log.Printf("outbox worker: Kafka sender is not available, attempting to recreate...")
+		w.outbox.tryCreateSender()
+		sender = w.outbox.GetSender()
+		if sender == nil {
+			log.Printf("outbox worker: cannot send, Kafka still unavailable")
+			return
+		}
+	}
+
+	encoder := w.outbox.encoder
 	for _, rec := range records {
-		encodedKey, encodedValue, err := w.encoder.Encode(rec.eventKey, rec.payload)
+		encodedKey, encodedValue, err := encoder.Encode(rec.eventKey, rec.payload)
 		if err != nil {
 			log.Printf("outbox worker: encode failed for id=%s: %v", rec.id, err)
 			continue
 		}
-		if err := w.sender.Send(ctx, rec.eventKey, encodedKey, encodedValue); err != nil {
+		if err := sender.Send(ctx, rec.eventKey, encodedKey, encodedValue); err != nil {
 			log.Printf("outbox worker: send to Kafka failed for id=%s, key=%s: %v", rec.id, rec.eventKey, err)
-			continue
+			w.outbox.MarkSenderBroken()
+			return
 		}
 		updateQuery := fmt.Sprintf("UPDATE %s SET published_at = NOW() WHERE id = $1", tableOutbox)
 		if _, err := w.db.ExecContext(ctx, updateQuery, rec.id); err != nil {
 			log.Printf("outbox worker: mark published failed for id=%s: %v", rec.id, err)
+			w.outbox.dbProblem = true
 		} else {
 			log.Printf("outbox worker: successfully published and marked id=%s, key=%s", rec.id, rec.eventKey)
 		}

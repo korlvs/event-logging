@@ -20,11 +20,15 @@ var (
 )
 
 type Outbox struct {
-	db      *sql.DB
-	cfg     Config
-	sender  Sender
-	encoder Encoder
-	worker  *Worker
+	db           *sql.DB
+	cfg          Config
+	sender       Sender
+	encoder      Encoder
+	worker       *Worker
+	mu           sync.RWMutex
+	senderBroken bool
+	dbProblem    bool
+	dbMu         sync.Mutex
 }
 
 func Init(db *sql.DB, cfg Config) error {
@@ -33,52 +37,125 @@ func Init(db *sql.DB, cfg Config) error {
 	}
 	var err error
 	once.Do(func() {
-		globalInstance = &Outbox{db: db, cfg: cfg}
+		globalInstance = &Outbox{db: db, cfg: cfg, senderBroken: true, dbProblem: false}
 		err = globalInstance.setup()
 	})
 	return err
 }
 
 func (o *Outbox) setup() error {
-	if err := RunMigrations(o.db, o.cfg.Schema); err != nil {
-		log.Printf("outbox: migrations failed: %v", err)
-		return fmt.Errorf("migrations failed: %w", err)
-	}
+	// Выбор encoder (всегда возможен)
 	switch o.cfg.Mode {
 	case "schema-registry":
 		o.encoder = NewSchemaRegistryEncoder(o.cfg.SchemaIDKey, o.cfg.SchemaIDValue)
-		sender, err := NewRestSender(o.cfg)
-		if err != nil {
-			return err
-		}
-		o.sender = sender
 	case "binary":
 		o.encoder = NewBinaryEncoder()
-		sender, err := NewSaramaSender(o.cfg.KafkaBrokers, o.cfg.KafkaTopic)
-		if err != nil {
-			return err
-		}
-		o.sender = sender
 	default:
 		return fmt.Errorf("unknown mode: %s", o.cfg.Mode)
 	}
-	o.worker = NewWorker(o.db, o.sender, o.encoder, o.cfg)
+
+	// Пытаемся создать Kafka-отправителя, но не падаем при ошибке
+	o.tryCreateSender()
+
+	o.worker = NewWorker(o.db, o, o.cfg)
 	go o.worker.Start()
 	log.Println("outbox: worker started")
 	return nil
 }
 
+// tryCreateSender пытается создать отправителя Kafka
+func (o *Outbox) tryCreateSender() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	var sender Sender
+	var err error
+	switch o.cfg.Mode {
+	case "schema-registry":
+		sender, err = NewRestSender(o.cfg)
+	case "binary":
+		sender, err = NewSaramaSender(o.cfg.KafkaBrokers, o.cfg.KafkaTopic)
+	}
+	if err != nil {
+		log.Printf("outbox: failed to create Kafka sender: %v (will retry later)", err)
+		o.sender = nil
+		o.senderBroken = true
+		return
+	}
+	o.sender = sender
+	o.senderBroken = false
+	log.Println("outbox: Kafka sender created successfully")
+}
+
+// GetSender возвращает текущего отправителя (nil если недоступен)
+func (o *Outbox) GetSender() Sender {
+	o.mu.RLock()
+	defer o.mu.RUnlock()
+	if o.senderBroken {
+		return nil
+	}
+	return o.sender
+}
+
+// MarkSenderBroken вызывается при ошибке отправки, чтобы пересоздать отправителя позже
+func (o *Outbox) MarkSenderBroken() {
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	o.senderBroken = true
+	if o.sender != nil {
+		if closer, ok := o.sender.(interface{ Close() error }); ok {
+			closer.Close()
+		}
+		o.sender = nil
+	}
+}
+
+// ensureTable проверяет существование таблицы outbox и при необходимости применяет миграции
+func (o *Outbox) ensureTable() error {
+	o.dbMu.Lock()
+	defer o.dbMu.Unlock()
+
+	var exists bool
+	err := o.db.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'outbox')").Scan(&exists)
+	if err != nil {
+		log.Printf("outbox: failed to check table existence: %v", err)
+		return err
+	}
+	if exists {
+		o.dbProblem = false
+		return nil
+	}
+
+	log.Println("outbox: table 'outbox' missing, applying migrations")
+	if err := RunMigrations(o.db, o.cfg.Schema); err != nil {
+		log.Printf("outbox: migrations failed: %v", err)
+		return err
+	}
+	log.Println("outbox: table created successfully")
+	o.dbProblem = false
+	return nil
+}
+
+// PublishEvent публикует событие без транзакции
 func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
 		return ErrNotInitialized
 	}
+
+	if globalInstance.dbProblem {
+		if err := globalInstance.ensureTable(); err != nil {
+			log.Printf("outbox: DB still unavailable, skipping publish for key=%s: %v", key, err)
+			return fmt.Errorf("database unavailable: %w", err)
+		}
+	}
+
 	enrichEvent(ctx, event)
 	protoBytes, err := proto.Marshal(event)
 	if err != nil {
 		log.Printf("outbox: failed to marshal proto for key=%s: %v", key, err)
 		return err
 	}
+
 	query := `INSERT INTO outbox (event_key, payload) VALUES ($1, $2)`
 	args := []interface{}{key, protoBytes}
 	if globalInstance.cfg.StoreJSON {
@@ -90,28 +167,42 @@ func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 		query = `INSERT INTO outbox (event_key, payload, payload_json) VALUES ($1, $2, $3)`
 		args = append(args, jsonBytes)
 	}
+
 	_, err = globalInstance.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		log.Printf("outbox: DB insert failed for key=%s: %v", key, err)
+		globalInstance.dbProblem = true
 		return err
 	}
+
+	globalInstance.dbProblem = false
 	if globalInstance.cfg.EnableConsoleLogging {
 		log.Printf("outbox: event published successfully, key=%s", key)
 	}
 	return nil
 }
 
+// PublishEventWithTx публикует событие внутри переданной транзакции
 func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
 		return ErrNotInitialized
 	}
+
+	if globalInstance.dbProblem {
+		if err := globalInstance.ensureTable(); err != nil {
+			log.Printf("outbox: DB still unavailable, skipping publish for key=%s: %v", key, err)
+			return fmt.Errorf("database unavailable: %w", err)
+		}
+	}
+
 	enrichEvent(ctx, event)
 	protoBytes, err := proto.Marshal(event)
 	if err != nil {
 		log.Printf("outbox: failed to marshal proto for key=%s: %v", key, err)
 		return err
 	}
+
 	query := `INSERT INTO outbox (event_key, payload) VALUES ($1, $2)`
 	args := []interface{}{key, protoBytes}
 	if globalInstance.cfg.StoreJSON {
@@ -123,17 +214,22 @@ func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *even
 		query = `INSERT INTO outbox (event_key, payload, payload_json) VALUES ($1, $2, $3)`
 		args = append(args, jsonBytes)
 	}
+
 	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		log.Printf("outbox: DB insert failed in tx for key=%s: %v", key, err)
+		globalInstance.dbProblem = true
 		return err
 	}
+
+	globalInstance.dbProblem = false
 	if globalInstance.cfg.EnableConsoleLogging {
 		log.Printf("outbox: event published successfully in tx, key=%s", key)
 	}
 	return nil
 }
 
+// enrichEvent заполняет недостающие поля события из контекста и конфигурации
 func enrichEvent(ctx context.Context, event *eventpb.Event) {
 	if event.SchemaVersion == "" {
 		event.SchemaVersion = "1.0"
@@ -145,6 +241,7 @@ func enrichEvent(ctx context.Context, event *eventpb.Event) {
 		event.Context = &eventpb.RequestContext{}
 	}
 	rc := event.Context
+
 	meta := RequestMetadataFromContext(ctx)
 	if meta != nil {
 		if rc.ClientIp == "" {
@@ -163,6 +260,7 @@ func enrichEvent(ctx context.Context, event *eventpb.Event) {
 	if rc.Environment == "" && globalInstance.cfg.Environment != "" {
 		rc.Environment = globalInstance.cfg.Environment
 	}
+
 	if event.Actor == nil {
 		event.Actor = &eventpb.Actor{}
 	}
@@ -181,6 +279,7 @@ func enrichEvent(ctx context.Context, event *eventpb.Event) {
 			event.Actor.Type = "anonymous"
 		}
 	}
+
 	if event.Details == nil {
 		event.Details = &structpb.Struct{Fields: map[string]*structpb.Value{}}
 	}
@@ -195,5 +294,6 @@ func enrichEvent(ctx context.Context, event *eventpb.Event) {
 func Shutdown() {
 	if globalInstance != nil && globalInstance.worker != nil {
 		globalInstance.worker.Stop()
+		log.Println("outbox: worker stopped")
 	}
 }
