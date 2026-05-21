@@ -35,8 +35,7 @@ func Init(db *sql.DB, cfg Config) error {
 }
 
 func (o *Outbox) setup() error {
-	// Применяем миграции (таблица outbox и управление версиями)
-	if err := RunMigrations(o.db); err != nil {
+	if err := RunMigrations(o.db, o.cfg.Schema); err != nil {
 		return fmt.Errorf("migrations failed: %w", err)
 	}
 

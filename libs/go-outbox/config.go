@@ -16,4 +16,6 @@ type Config struct {
 	ServiceName    string // имя микросервиса (source_service)
 	ServiceVersion string // версия сервиса (добавляется в details)
 	Environment    string // production / staging / development
+
+	Schema string
 }
