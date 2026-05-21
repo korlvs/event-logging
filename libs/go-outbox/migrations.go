@@ -7,22 +7,32 @@ import (
 	"strings"
 )
 
-func ensureMigrationsTable(db *sql.DB, schema string) error {
+func quoteIdentifier(name string) string {
+	return `"` + name + `"`
+}
+
+func fullTableName(schema, table string) string {
 	if schema == "" {
-		schema = "public"
+		return quoteIdentifier(table)
 	}
+	return quoteIdentifier(schema) + "." + quoteIdentifier(table)
+}
+
+func ensureMigrationsTable(db *sql.DB, schema string) error {
+	tableName := fullTableName(schema, "outbox_schema_migrations")
 	query := fmt.Sprintf(`
-        CREATE TABLE IF NOT EXISTS %s.outbox_schema_migrations (
+        CREATE TABLE IF NOT EXISTS %s (
             version INTEGER PRIMARY KEY,
             applied_at TIMESTAMPTZ DEFAULT NOW()
         );
-    `, schema)
+    `, tableName)
 	_, err := db.Exec(query)
 	return err
 }
 
 func getAppliedVersions(db *sql.DB, schema string) (map[int]bool, error) {
-	query := fmt.Sprintf("SELECT version FROM %s.outbox_schema_migrations ORDER BY version", schema)
+	tableName := fullTableName(schema, "outbox_schema_migrations")
+	query := fmt.Sprintf("SELECT version FROM %s ORDER BY version", tableName)
 	rows, err := db.Query(query)
 	if err != nil {
 		return nil, err
@@ -46,13 +56,13 @@ func applyMigration(db *sql.DB, schema string, version int, sqlScript string) er
 	}
 	defer tx.Rollback()
 
-	// Выполняем SQL миграции (в них тоже нужно подставлять схему, но обычно CREATE TABLE уже содержит IF NOT EXISTS)
+	// Выполняем SQL миграции (сами скрипты не содержат схемы, полагаемся на search_path)
 	if _, err := tx.Exec(sqlScript); err != nil {
 		return fmt.Errorf("migration %d: %w", version, err)
 	}
 
-	// Записываем версию
-	insertQuery := fmt.Sprintf("INSERT INTO %s.outbox_schema_migrations (version) VALUES ($1)", schema)
+	tableName := fullTableName(schema, "outbox_schema_migrations")
+	insertQuery := fmt.Sprintf("INSERT INTO %s (version) VALUES ($1)", tableName)
 	if _, err := tx.Exec(insertQuery, version); err != nil {
 		return fmt.Errorf("failed to record migration %d: %w", version, err)
 	}

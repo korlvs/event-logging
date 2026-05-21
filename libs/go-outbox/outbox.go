@@ -26,6 +26,10 @@ type Outbox struct {
 }
 
 func Init(db *sql.DB, cfg Config) error {
+	// Если схема не задана, используем "public"
+	if cfg.Schema == "" {
+		cfg.Schema = "public"
+	}
 	var err error
 	once.Do(func() {
 		globalInstance = &Outbox{db: db, cfg: cfg}

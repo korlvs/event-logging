@@ -3,6 +3,7 @@ package outbox
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"log"
 	"time"
 )
@@ -40,12 +41,15 @@ func (w *Worker) Start() {
 
 func (w *Worker) processBatch() {
 	ctx := context.Background()
-	rows, err := w.db.QueryContext(ctx,
-		`SELECT id, event_key, payload FROM outbox
+	tableOutbox := fullTableName(w.cfg.Schema, "outbox")
+	selectQuery := fmt.Sprintf(
+		`SELECT id, event_key, payload FROM %s
          WHERE published_at IS NULL
          ORDER BY created_at ASC
          LIMIT $1`,
-		w.cfg.BatchSize)
+		tableOutbox,
+	)
+	rows, err := w.db.QueryContext(ctx, selectQuery, w.cfg.BatchSize)
 	if err != nil {
 		log.Printf("fetch outbox: %v", err)
 		return
@@ -81,8 +85,8 @@ func (w *Worker) processBatch() {
 			log.Printf("send failed %s: %v", rec.id, err)
 			continue
 		}
-		if _, err := w.db.ExecContext(ctx,
-			"UPDATE outbox SET published_at = NOW() WHERE id = $1", rec.id); err != nil {
+		updateQuery := fmt.Sprintf("UPDATE %s SET published_at = NOW() WHERE id = $1", tableOutbox)
+		if _, err := w.db.ExecContext(ctx, updateQuery, rec.id); err != nil {
 			log.Printf("mark published failed %s: %v", rec.id, err)
 		}
 	}
