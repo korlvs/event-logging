@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"sync"
 
 	eventpb "github.com/korlvs/event-logging/contracts/event/v1"
@@ -40,6 +41,7 @@ func Init(db *sql.DB, cfg Config) error {
 
 func (o *Outbox) setup() error {
 	if err := RunMigrations(o.db, o.cfg.Schema); err != nil {
+		log.Printf("outbox: migrations failed: %v", err)
 		return fmt.Errorf("migrations failed: %w", err)
 	}
 	switch o.cfg.Mode {
@@ -62,16 +64,19 @@ func (o *Outbox) setup() error {
 	}
 	o.worker = NewWorker(o.db, o.sender, o.encoder, o.cfg)
 	go o.worker.Start()
+	log.Println("outbox: worker started")
 	return nil
 }
 
 func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
+		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
 		return ErrNotInitialized
 	}
 	enrichEvent(ctx, event)
 	protoBytes, err := proto.Marshal(event)
 	if err != nil {
+		log.Printf("outbox: failed to marshal proto for key=%s: %v", key, err)
 		return err
 	}
 	query := `INSERT INTO outbox (event_key, payload) VALUES ($1, $2)`
@@ -79,22 +84,32 @@ func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if globalInstance.cfg.StoreJSON {
 		jsonBytes, err := protojson.Marshal(event)
 		if err != nil {
+			log.Printf("outbox: failed to marshal JSON for key=%s: %v", key, err)
 			return err
 		}
 		query = `INSERT INTO outbox (event_key, payload, payload_json) VALUES ($1, $2, $3)`
 		args = append(args, jsonBytes)
 	}
 	_, err = globalInstance.db.ExecContext(ctx, query, args...)
-	return err
+	if err != nil {
+		log.Printf("outbox: DB insert failed for key=%s: %v", key, err)
+		return err
+	}
+	if globalInstance.cfg.EnableConsoleLogging {
+		log.Printf("outbox: event published successfully, key=%s", key)
+	}
+	return nil
 }
 
 func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
+		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
 		return ErrNotInitialized
 	}
 	enrichEvent(ctx, event)
 	protoBytes, err := proto.Marshal(event)
 	if err != nil {
+		log.Printf("outbox: failed to marshal proto for key=%s: %v", key, err)
 		return err
 	}
 	query := `INSERT INTO outbox (event_key, payload) VALUES ($1, $2)`
@@ -102,13 +117,21 @@ func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *even
 	if globalInstance.cfg.StoreJSON {
 		jsonBytes, err := protojson.Marshal(event)
 		if err != nil {
+			log.Printf("outbox: failed to marshal JSON for key=%s: %v", key, err)
 			return err
 		}
 		query = `INSERT INTO outbox (event_key, payload, payload_json) VALUES ($1, $2, $3)`
 		args = append(args, jsonBytes)
 	}
 	_, err = tx.ExecContext(ctx, query, args...)
-	return err
+	if err != nil {
+		log.Printf("outbox: DB insert failed in tx for key=%s: %v", key, err)
+		return err
+	}
+	if globalInstance.cfg.EnableConsoleLogging {
+		log.Printf("outbox: event published successfully in tx, key=%s", key)
+	}
+	return nil
 }
 
 func enrichEvent(ctx context.Context, event *eventpb.Event) {
