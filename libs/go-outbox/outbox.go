@@ -135,54 +135,55 @@ func (o *Outbox) ensureTable() error {
 	return nil
 }
 
+// PublishEvent публикует событие без транзакции
 func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
 		return ErrNotInitialized
 	}
 
+	// Если был флаг проблем с БД – пробуем восстановить таблицу
 	if globalInstance.dbProblem {
 		if err := globalInstance.ensureTable(); err != nil {
-			log.Printf("outbox: DB still unavailable, skipping publish for key=%s: %v", key, err)
+			log.Printf("outbox: DB still unavailable, skipping publish for key=%s", key)
 			return fmt.Errorf("database unavailable: %w", err)
 		}
 	}
 
 	enrichEvent(ctx, event)
+
+	// Сериализуем в JSON для возможного логирования (при ошибке или при включённом флаге)
+	jsonEvent, _ := protojson.Marshal(event)
+
 	protoBytes, err := proto.Marshal(event)
 	if err != nil {
-		log.Printf("outbox: failed to marshal proto for key=%s: %v", key, err)
+		log.Printf("outbox: failed to marshal proto for key=%s, event=%s: %v", key, string(jsonEvent), err)
 		return err
 	}
 
 	query := `INSERT INTO outbox (event_key, payload) VALUES ($1, $2)`
 	args := []interface{}{key, protoBytes}
 	if globalInstance.cfg.StoreJSON {
-		jsonBytes, err := protojson.Marshal(event)
-		if err != nil {
-			log.Printf("outbox: failed to marshal JSON for key=%s: %v", key, err)
-			return err
-		}
 		query = `INSERT INTO outbox (event_key, payload, payload_json) VALUES ($1, $2, $3)`
-		args = append(args, jsonBytes)
+		args = append(args, jsonEvent)
 	}
 
 	_, err = globalInstance.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		log.Printf("outbox: DB insert failed for key=%s: %v", key, err)
+		// Всегда логируем ошибку с полным событием
+		log.Printf("outbox: DB insert failed for key=%s, event=%s: %v", key, string(jsonEvent), err)
 		globalInstance.dbProblem = true
 		return err
 	}
 
-	globalInstance.dbProblem = false
 	if globalInstance.cfg.EnableConsoleLogging {
-		// Логируем метаинформацию и JSON события
-		jsonPayload, _ := protojson.Marshal(event)
-		log.Printf("outbox: event published successfully, key=%s, event=%s", key, string(jsonPayload))
+		log.Printf("outbox: event published successfully, key=%s, event=%s", key, string(jsonEvent))
 	}
+	globalInstance.dbProblem = false
 	return nil
 }
 
+// PublishEventWithTx публикует событие внутри переданной транзакции
 func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
@@ -191,42 +192,39 @@ func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *even
 
 	if globalInstance.dbProblem {
 		if err := globalInstance.ensureTable(); err != nil {
-			log.Printf("outbox: DB still unavailable, skipping publish for key=%s: %v", key, err)
+			log.Printf("outbox: DB still unavailable, skipping publish for key=%s", key)
 			return fmt.Errorf("database unavailable: %w", err)
 		}
 	}
 
 	enrichEvent(ctx, event)
+
+	jsonEvent, _ := protojson.Marshal(event)
+
 	protoBytes, err := proto.Marshal(event)
 	if err != nil {
-		log.Printf("outbox: failed to marshal proto for key=%s: %v", key, err)
+		log.Printf("outbox: failed to marshal proto for key=%s, event=%s: %v", key, string(jsonEvent), err)
 		return err
 	}
 
 	query := `INSERT INTO outbox (event_key, payload) VALUES ($1, $2)`
 	args := []interface{}{key, protoBytes}
 	if globalInstance.cfg.StoreJSON {
-		jsonBytes, err := protojson.Marshal(event)
-		if err != nil {
-			log.Printf("outbox: failed to marshal JSON for key=%s: %v", key, err)
-			return err
-		}
 		query = `INSERT INTO outbox (event_key, payload, payload_json) VALUES ($1, $2, $3)`
-		args = append(args, jsonBytes)
+		args = append(args, jsonEvent)
 	}
 
 	_, err = tx.ExecContext(ctx, query, args...)
 	if err != nil {
-		log.Printf("outbox: DB insert failed in tx for key=%s: %v", key, err)
+		log.Printf("outbox: DB insert failed in tx for key=%s, event=%s: %v", key, string(jsonEvent), err)
 		globalInstance.dbProblem = true
 		return err
 	}
 
-	globalInstance.dbProblem = false
 	if globalInstance.cfg.EnableConsoleLogging {
-		jsonPayload, _ := protojson.Marshal(event)
-		log.Printf("outbox: event published successfully in tx, key=%s, event=%s", key, string(jsonPayload))
+		log.Printf("outbox: event published successfully in tx, key=%s, event=%s", key, string(jsonEvent))
 	}
+	globalInstance.dbProblem = false
 	return nil
 }
 
