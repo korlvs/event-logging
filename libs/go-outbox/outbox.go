@@ -44,7 +44,6 @@ func Init(db *sql.DB, cfg Config) error {
 }
 
 func (o *Outbox) setup() error {
-	// Выбор encoder (всегда возможен)
 	switch o.cfg.Mode {
 	case "schema-registry":
 		o.encoder = NewSchemaRegistryEncoder(o.cfg.SchemaIDKey, o.cfg.SchemaIDValue)
@@ -54,16 +53,16 @@ func (o *Outbox) setup() error {
 		return fmt.Errorf("unknown mode: %s", o.cfg.Mode)
 	}
 
-	// Пытаемся создать Kafka-отправителя, но не падаем при ошибке
 	o.tryCreateSender()
 
 	o.worker = NewWorker(o.db, o, o.cfg)
 	go o.worker.Start()
-	log.Println("outbox: worker started")
+	if o.cfg.EnableConsoleLogging {
+		log.Println("outbox: worker started")
+	}
 	return nil
 }
 
-// tryCreateSender пытается создать отправителя Kafka
 func (o *Outbox) tryCreateSender() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -83,10 +82,11 @@ func (o *Outbox) tryCreateSender() {
 	}
 	o.sender = sender
 	o.senderBroken = false
-	log.Println("outbox: Kafka sender created successfully")
+	if o.cfg.EnableConsoleLogging {
+		log.Println("outbox: Kafka sender created successfully")
+	}
 }
 
-// GetSender возвращает текущего отправителя (nil если недоступен)
 func (o *Outbox) GetSender() Sender {
 	o.mu.RLock()
 	defer o.mu.RUnlock()
@@ -96,7 +96,6 @@ func (o *Outbox) GetSender() Sender {
 	return o.sender
 }
 
-// MarkSenderBroken вызывается при ошибке отправки, чтобы пересоздать отправителя позже
 func (o *Outbox) MarkSenderBroken() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
@@ -109,7 +108,6 @@ func (o *Outbox) MarkSenderBroken() {
 	}
 }
 
-// ensureTable проверяет существование таблицы outbox и при необходимости применяет миграции
 func (o *Outbox) ensureTable() error {
 	o.dbMu.Lock()
 	defer o.dbMu.Unlock()
@@ -130,12 +128,13 @@ func (o *Outbox) ensureTable() error {
 		log.Printf("outbox: migrations failed: %v", err)
 		return err
 	}
-	log.Println("outbox: table created successfully")
+	if o.cfg.EnableConsoleLogging {
+		log.Println("outbox: table created successfully")
+	}
 	o.dbProblem = false
 	return nil
 }
 
-// PublishEvent публикует событие без транзакции
 func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
@@ -177,12 +176,13 @@ func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 
 	globalInstance.dbProblem = false
 	if globalInstance.cfg.EnableConsoleLogging {
-		log.Printf("outbox: event published successfully, key=%s", key)
+		// Логируем метаинформацию и JSON события
+		jsonPayload, _ := protojson.Marshal(event)
+		log.Printf("outbox: event published successfully, key=%s, event=%s", key, string(jsonPayload))
 	}
 	return nil
 }
 
-// PublishEventWithTx публикует событие внутри переданной транзакции
 func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
@@ -224,7 +224,8 @@ func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *even
 
 	globalInstance.dbProblem = false
 	if globalInstance.cfg.EnableConsoleLogging {
-		log.Printf("outbox: event published successfully in tx, key=%s", key)
+		jsonPayload, _ := protojson.Marshal(event)
+		log.Printf("outbox: event published successfully in tx, key=%s, event=%s", key, string(jsonPayload))
 	}
 	return nil
 }
@@ -294,6 +295,8 @@ func enrichEvent(ctx context.Context, event *eventpb.Event) {
 func Shutdown() {
 	if globalInstance != nil && globalInstance.worker != nil {
 		globalInstance.worker.Stop()
-		log.Println("outbox: worker stopped")
+		if globalInstance.cfg.EnableConsoleLogging {
+			log.Println("outbox: worker stopped")
+		}
 	}
 }

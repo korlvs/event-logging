@@ -25,7 +25,9 @@ func NewWorker(db *sql.DB, outbox *Outbox, cfg Config) *Worker {
 }
 
 func (w *Worker) Start() {
-	log.Println("outbox worker: started, interval=5s")
+	if w.cfg.EnableConsoleLogging {
+		log.Println("outbox worker: started, interval=5s")
+	}
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -33,7 +35,9 @@ func (w *Worker) Start() {
 		case <-ticker.C:
 			w.processBatch()
 		case <-w.stopCh:
-			log.Println("outbox worker: stopping")
+			if w.cfg.EnableConsoleLogging {
+				log.Println("outbox worker: stopping")
+			}
 			return
 		}
 	}
@@ -42,7 +46,6 @@ func (w *Worker) Start() {
 func (w *Worker) processBatch() {
 	ctx := context.Background()
 
-	// Если есть флаг проблемы БД – пробуем восстановить таблицу
 	if w.outbox.dbProblem {
 		if err := w.outbox.ensureTable(); err != nil {
 			log.Printf("outbox worker: DB still unavailable: %v", err)
@@ -89,9 +92,10 @@ func (w *Worker) processBatch() {
 	if len(records) == 0 {
 		return
 	}
-	log.Printf("outbox worker: processing %d records", len(records))
+	if w.cfg.EnableConsoleLogging {
+		log.Printf("outbox worker: processing %d records", len(records))
+	}
 
-	// Проверяем sender, при необходимости пересоздаём
 	sender := w.outbox.GetSender()
 	if sender == nil {
 		log.Printf("outbox worker: Kafka sender is not available, attempting to recreate...")
@@ -119,7 +123,7 @@ func (w *Worker) processBatch() {
 		if _, err := w.db.ExecContext(ctx, updateQuery, rec.id); err != nil {
 			log.Printf("outbox worker: mark published failed for id=%s: %v", rec.id, err)
 			w.outbox.dbProblem = true
-		} else {
+		} else if w.cfg.EnableConsoleLogging {
 			log.Printf("outbox worker: successfully published and marked id=%s, key=%s", rec.id, rec.eventKey)
 		}
 	}
