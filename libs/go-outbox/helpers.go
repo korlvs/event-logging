@@ -5,38 +5,71 @@ import (
 
 	"github.com/google/uuid"
 	eventpb "github.com/korlvs/event-logging/contracts/event/v1"
+	"google.golang.org/protobuf/types/known/structpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-// NewEvent создаёт событие с заполненными обязательными полями.
-func NewEvent(sourceSystem, initiator, eventType, tag, stateBefore, stateAfter string) *eventpb.Event {
+// NewEvent создаёт базовое событие с обязательными полями.
+func NewEvent(category, action string, opType eventpb.OperationType, status eventpb.EventStatus) *eventpb.Event {
 	now := timestamppb.Now()
 	return &eventpb.Event{
-		Id:            uuid.New().String(),
-		SourceSystem:  sourceSystem,
-		EventTime:     now,
-		PublishedTime: now,
-		Initiator:     initiator,
-		StateBefore:   stateBefore,
-		StateAfter:    stateAfter,
-		Tag:           tag,
-		EventType:     eventType,
-		TraceId:       uuid.New().String(),
+		EventId:       uuid.New().String(),
+		Timestamp:     now,
+		Category:      category,
+		Action:        action,
+		OperationType: opType,
+		Status:        status,
+		SchemaVersion: "1.0",
 	}
 }
 
-// SetStatus устанавливает статус события.
-func SetStatus(event *eventpb.Event, status string) {
-	event.Status = status
+// SetActor добавляет информацию об инициаторе.
+func SetActor(event *eventpb.Event, id, typ, displayName string) {
+	if event.Actor == nil {
+		event.Actor = &eventpb.Actor{}
+	}
+	event.Actor.Id = id
+	event.Actor.Type = typ
+	event.Actor.DisplayName = displayName
 }
 
-// SetDescription устанавливает описание события.
-func SetDescription(event *eventpb.Event, description string) {
-	event.Description = description
+// SetResource добавляет целевой ресурс.
+func SetResource(event *eventpb.Event, id, typ string) {
+	if event.Resource == nil {
+		event.Resource = &eventpb.Target{}
+	}
+	event.Resource.Id = id
+	event.Resource.Type = typ
 }
 
-// PublishSimple публикует событие с минимальным набором полей (без статуса и описания).
-func PublishSimple(ctx context.Context, sourceSystem, initiator, eventType, tag, stateBefore, stateAfter string) error {
-	event := NewEvent(sourceSystem, initiator, eventType, tag, stateBefore, stateAfter)
-	return PublishEvent(ctx, event.Id, event)
+// SetResourceDetails устанавливает бизнес-данные в виде map.
+func SetResourceDetails(event *eventpb.Event, details map[string]interface{}) error {
+	if details == nil {
+		return nil
+	}
+	structDetails, err := structpb.NewStruct(details)
+	if err != nil {
+		return err
+	}
+	event.ResourceDetails = structDetails
+	return nil
+}
+
+// SetDetails устанавливает технические детали.
+func SetDetails(event *eventpb.Event, details map[string]interface{}) error {
+	if details == nil {
+		return nil
+	}
+	structDetails, err := structpb.NewStruct(details)
+	if err != nil {
+		return err
+	}
+	event.Details = structDetails
+	return nil
+}
+
+// PublishSimple упрощённая публикация события без actor и resource.
+func PublishSimple(ctx context.Context, category, action string, opType eventpb.OperationType, status eventpb.EventStatus) error {
+	event := NewEvent(category, action, opType, status)
+	return PublishEvent(ctx, event.EventId, event)
 }

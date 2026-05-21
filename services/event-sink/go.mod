@@ -1,6 +1,6 @@
 module github.com/korlvs/event-logging/services/event-sink
 
-go 1.25
+go 1.25.10
 
 require (
 	github.com/getkin/kin-openapi v0.138.0
