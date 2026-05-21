@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	eventpb "github.com/korlvs/event-logging/contracts/event/v1"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -20,15 +21,16 @@ var (
 )
 
 type Outbox struct {
-	db           *sql.DB
-	cfg          Config
-	sender       Sender
-	encoder      Encoder
-	worker       *Worker
-	mu           sync.RWMutex
-	senderBroken bool
-	dbProblem    bool
-	dbMu         sync.Mutex
+	db             *sql.DB
+	cfg            Config
+	sender         Sender
+	encoder        Encoder
+	worker         *Worker
+	mu             sync.RWMutex
+	senderBroken   bool
+	dbProblem      bool
+	dbMu           sync.Mutex
+	dbRecoveryStop chan struct{}
 }
 
 func Init(db *sql.DB, cfg Config) error {
@@ -55,8 +57,13 @@ func (o *Outbox) setup() error {
 
 	o.tryCreateSender()
 
+	// Запускаем фоновую проверку БД
+	o.dbRecoveryStop = make(chan struct{})
+	go o.dbRecoveryLoop()
+
 	o.worker = NewWorker(o.db, o, o.cfg)
 	go o.worker.Start()
+	log.Println("outbox: worker started")
 	if o.cfg.EnableConsoleLogging {
 		log.Println("outbox: worker started")
 	}
@@ -142,17 +149,9 @@ func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 		return ErrNotInitialized
 	}
 
-	// Если был флаг проблем с БД – пробуем восстановить таблицу
-	if globalInstance.dbProblem {
-		if err := globalInstance.ensureTable(); err != nil {
-			log.Printf("outbox: DB still unavailable, skipping publish for key=%s", key)
-			return fmt.Errorf("database unavailable: %w", err)
-		}
-	}
-
 	enrichEvent(ctx, event)
 
-	// Сериализуем в JSON для возможного логирования (при ошибке или при включённом флаге)
+	// Сериализуем JSON для логирования
 	jsonEvent, _ := protojson.Marshal(event)
 
 	protoBytes, err := proto.Marshal(event)
@@ -170,35 +169,32 @@ func PublishEvent(ctx context.Context, key string, event *eventpb.Event) error {
 
 	_, err = globalInstance.db.ExecContext(ctx, query, args...)
 	if err != nil {
-		// Всегда логируем ошибку с полным событием
+		// Логируем событие при ошибке БД
 		log.Printf("outbox: DB insert failed for key=%s, event=%s: %v", key, string(jsonEvent), err)
 		globalInstance.dbProblem = true
 		return err
 	}
 
+	// Успех – сбрасываем флаг (если он был)
+	if globalInstance.dbProblem {
+		globalInstance.dbProblem = false
+		log.Println("outbox: DB recovered (successful insert)")
+	}
+
 	if globalInstance.cfg.EnableConsoleLogging {
 		log.Printf("outbox: event published successfully, key=%s, event=%s", key, string(jsonEvent))
 	}
-	globalInstance.dbProblem = false
 	return nil
 }
 
-// PublishEventWithTx публикует событие внутри переданной транзакции
+// PublishEventWithTx аналогично (копируем логику с заменой tx.ExecContext)
 func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *eventpb.Event) error {
 	if globalInstance == nil {
 		log.Printf("outbox: not initialized, cannot publish event key=%s", key)
 		return ErrNotInitialized
 	}
 
-	if globalInstance.dbProblem {
-		if err := globalInstance.ensureTable(); err != nil {
-			log.Printf("outbox: DB still unavailable, skipping publish for key=%s", key)
-			return fmt.Errorf("database unavailable: %w", err)
-		}
-	}
-
 	enrichEvent(ctx, event)
-
 	jsonEvent, _ := protojson.Marshal(event)
 
 	protoBytes, err := proto.Marshal(event)
@@ -221,10 +217,14 @@ func PublishEventWithTx(ctx context.Context, tx *sql.Tx, key string, event *even
 		return err
 	}
 
+	if globalInstance.dbProblem {
+		globalInstance.dbProblem = false
+		log.Println("outbox: DB recovered (successful insert in tx)")
+	}
+
 	if globalInstance.cfg.EnableConsoleLogging {
 		log.Printf("outbox: event published successfully in tx, key=%s, event=%s", key, string(jsonEvent))
 	}
-	globalInstance.dbProblem = false
 	return nil
 }
 
@@ -290,11 +290,49 @@ func enrichEvent(ctx context.Context, event *eventpb.Event) {
 	}
 }
 
-func Shutdown() {
-	if globalInstance != nil && globalInstance.worker != nil {
-		globalInstance.worker.Stop()
-		if globalInstance.cfg.EnableConsoleLogging {
-			log.Println("outbox: worker stopped")
+// dbRecoveryLoop фоновая горутина, восстанавливающая таблицу outbox при проблемах
+func (o *Outbox) dbRecoveryLoop() {
+	ticker := time.NewTicker(1 * time.Minute)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			if o.dbProblem {
+				// Проверяем существование таблицы
+				var exists bool
+				err := o.db.QueryRow("SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'outbox')").Scan(&exists)
+				if err != nil {
+					log.Printf("outbox: DB recovery check failed: %v", err)
+					continue
+				}
+				if !exists {
+					log.Println("outbox: attempting to create missing outbox table via migrations")
+					if err := RunMigrations(o.db, o.cfg.Schema); err != nil {
+						log.Printf("outbox: DB recovery migrations failed: %v", err)
+					} else {
+						o.dbProblem = false
+						log.Println("outbox: DB recovery successful")
+					}
+				} else {
+					// Таблица существует, сбрасываем флаг
+					o.dbProblem = false
+					log.Println("outbox: DB recovery: table exists, flag cleared")
+				}
+			}
+		case <-o.dbRecoveryStop:
+			return
 		}
+	}
+}
+
+func Shutdown() {
+	if globalInstance != nil {
+		if globalInstance.worker != nil {
+			globalInstance.worker.Stop()
+		}
+		if globalInstance.dbRecoveryStop != nil {
+			close(globalInstance.dbRecoveryStop)
+		}
+		log.Println("outbox: stopped")
 	}
 }
