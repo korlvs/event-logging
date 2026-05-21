@@ -1,3 +1,5 @@
+SET search_path TO public;
+
 CREATE TABLE IF NOT EXISTS outbox (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     event_key TEXT NOT NULL,
@@ -8,3 +10,8 @@ CREATE TABLE IF NOT EXISTS outbox (
 
 CREATE INDEX IF NOT EXISTS idx_outbox_published ON outbox(published_at) WHERE published_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_outbox_created ON outbox(created_at);
+
+CREATE TABLE IF NOT EXISTS outbox_schema_migrations (
+    version INTEGER PRIMARY KEY,
+    applied_at TIMESTAMPTZ DEFAULT NOW()
+);
