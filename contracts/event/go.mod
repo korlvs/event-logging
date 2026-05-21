@@ -1,5 +1,5 @@
 module github.com/korlvs/event-logging/contracts/event
 
-go 1.24.5
+go 1.25.10
 
 require google.golang.org/protobuf v1.36.11

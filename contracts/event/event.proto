@@ -5,19 +5,100 @@ package event.v1;
 option go_package = "github.com/korlvs/event-logging/contracts/event/event/v1";
 
 import "google/protobuf/timestamp.proto";
+import "google/protobuf/struct.proto";
 
+// Главный объект события
 message Event {
-    string id = 1;
-    string source_system = 2;
-    google.protobuf.Timestamp event_time = 3;
-    google.protobuf.Timestamp published_time = 4;
-    string initiator = 5;
-    string state_before = 6;
-    string state_after = 7;
-    string tag = 8;
-    string event_type = 9;
-    string status = 10;
-    string description = 11;
-    string trace_id = 12;
-    string initiator_name = 13;
+  // Уникальный ID самого события (UUIDv4) для дедупликации в СУБД
+  string event_id = 1;
+
+  // Точное время происхождения события на стороне клиента (UTC)
+  google.protobuf.Timestamp timestamp = 2;
+
+  // Бизнес-домен или модуль (например: "identity", "billing", "orders")
+  string category = 3;
+
+  // Конкретное техническое действие (например: "user.password_reset", "invoice.paid")
+  string action = 4;
+
+  // Высокоуровневый тип операции (CRUD+) для быстрой фильтрации аналитиками
+  OperationType operation_type = 5;
+
+  // Статус выполнения (Успешно, Ошибка, Отказано в доступе)
+  EventStatus status = 6;
+
+  // Субъект: Кто совершил действие?
+  Actor actor = 7;
+
+  // Контекст: Откуда и в каком окружении совершено действие?
+  RequestContext context = 8;
+
+  // Объект: Над чем совершено действие?
+  Target resource = 9;
+
+  // Произвольные структурированные бизнес-данные (переводятся в JSON в БД)
+  google.protobuf.Struct resource_details = 10;
+
+  // Произвольные структурированные технические-данные (переводятся в JSON в БД)
+  google.protobuf.Struct details = 11;
+
+  // Версия схемы данных (полезно при миграциях и изменении логики логов)
+  string schema_version = 12;
+}
+
+// Тип операции (CRUD) для глобальной классификации
+enum OperationType {
+  OPERATION_TYPE_UNSPECIFIED = 0;
+  OPERATION_TYPE_CREATE = 1;     // Создание сущности, регистрация, добавление
+  OPERATION_TYPE_READ = 2;       // Просмотр, поиск, экспорт (критично для утечек PII)
+  OPERATION_TYPE_UPDATE = 3;     // Модификация, изменение статуса, обновление
+  OPERATION_TYPE_DELETE = 4;     // Удаление (как мягкое, так и жесткое)
+  OPERATION_TYPE_EXECUTE = 5;    // Запуск системных процессов, скриптов, команд
+}
+
+// Статус выполнения действия
+enum EventStatus {
+  EVENT_STATUS_UNSPECIFIED = 0;
+  EVENT_STATUS_SUCCESS = 1;     // Действие завершилось успешно
+  EVENT_STATUS_FAILED = 2;      // Действие завершилось технической ошибкой
+  EVENT_STATUS_DENIED = 3;      // Ошибка авторизации / 403 Forbidden (сигнал ИБ)
+}
+
+// Информация об инициаторе события (Кто?)
+message Actor {
+  // Идентификатор (ID пользователя, ID сервиса или токена)
+  string id = 1;
+
+  // Тип инициатора (например: "user", "service_account", "system_cron")
+  string type = 2;
+
+  // Понятное имя для быстрого чтения глазами (например: "john.doe@company.com")
+  string display_name = 3;
+}
+
+// Контекст инфраструктуры и запроса (Где/Как?)
+message RequestContext {
+  // IP-адрес клиента (IPv4 или IPv6)
+  string client_ip = 1;
+
+  // Сквозной ID для распределенной трассировки (Trace ID / Correlation ID)
+  string correlation_id = 2;
+
+  // Имя микросервиса, который отправил этот лог
+  string source_service = 3;
+
+  // Стенд / Окружение (например: "production", "staging", "development")
+  string environment = 4;
+
+  // Заголовок User-Agent или информация о типе устройства клиента
+  string user_agent = 5;
+}
+
+// Целевой объект, над которым совершено действие (Над чем?)
+message Target {
+  // Уникальный ID целевого объекта (например: "order_99812", "user_auth_config")
+  string id = 1;
+
+  // Тип объекта (например: "order", "user_profile", "api_key")
+  string type = 2;
 }

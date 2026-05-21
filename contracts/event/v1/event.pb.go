@@ -9,6 +9,7 @@ package v1
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
+	structpb "google.golang.org/protobuf/types/known/structpb"
 	timestamppb "google.golang.org/protobuf/types/known/timestamppb"
 	reflect "reflect"
 	sync "sync"
@@ -22,21 +23,145 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+// Тип операции (CRUD) для глобальной классификации
+type OperationType int32
+
+const (
+	OperationType_OPERATION_TYPE_UNSPECIFIED OperationType = 0
+	OperationType_OPERATION_TYPE_CREATE      OperationType = 1 // Создание сущности, регистрация, добавление
+	OperationType_OPERATION_TYPE_READ        OperationType = 2 // Просмотр, поиск, экспорт (критично для утечек PII)
+	OperationType_OPERATION_TYPE_UPDATE      OperationType = 3 // Модификация, изменение статуса, обновление
+	OperationType_OPERATION_TYPE_DELETE      OperationType = 4 // Удаление (как мягкое, так и жесткое)
+	OperationType_OPERATION_TYPE_EXECUTE     OperationType = 5 // Запуск системных процессов, скриптов, команд
+)
+
+// Enum value maps for OperationType.
+var (
+	OperationType_name = map[int32]string{
+		0: "OPERATION_TYPE_UNSPECIFIED",
+		1: "OPERATION_TYPE_CREATE",
+		2: "OPERATION_TYPE_READ",
+		3: "OPERATION_TYPE_UPDATE",
+		4: "OPERATION_TYPE_DELETE",
+		5: "OPERATION_TYPE_EXECUTE",
+	}
+	OperationType_value = map[string]int32{
+		"OPERATION_TYPE_UNSPECIFIED": 0,
+		"OPERATION_TYPE_CREATE":      1,
+		"OPERATION_TYPE_READ":        2,
+		"OPERATION_TYPE_UPDATE":      3,
+		"OPERATION_TYPE_DELETE":      4,
+		"OPERATION_TYPE_EXECUTE":     5,
+	}
+)
+
+func (x OperationType) Enum() *OperationType {
+	p := new(OperationType)
+	*p = x
+	return p
+}
+
+func (x OperationType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (OperationType) Descriptor() protoreflect.EnumDescriptor {
+	return file_event_proto_enumTypes[0].Descriptor()
+}
+
+func (OperationType) Type() protoreflect.EnumType {
+	return &file_event_proto_enumTypes[0]
+}
+
+func (x OperationType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use OperationType.Descriptor instead.
+func (OperationType) EnumDescriptor() ([]byte, []int) {
+	return file_event_proto_rawDescGZIP(), []int{0}
+}
+
+// Статус выполнения действия
+type EventStatus int32
+
+const (
+	EventStatus_EVENT_STATUS_UNSPECIFIED EventStatus = 0
+	EventStatus_EVENT_STATUS_SUCCESS     EventStatus = 1 // Действие завершилось успешно
+	EventStatus_EVENT_STATUS_FAILED      EventStatus = 2 // Действие завершилось технической ошибкой
+	EventStatus_EVENT_STATUS_DENIED      EventStatus = 3 // Ошибка авторизации / 403 Forbidden (сигнал ИБ)
+)
+
+// Enum value maps for EventStatus.
+var (
+	EventStatus_name = map[int32]string{
+		0: "EVENT_STATUS_UNSPECIFIED",
+		1: "EVENT_STATUS_SUCCESS",
+		2: "EVENT_STATUS_FAILED",
+		3: "EVENT_STATUS_DENIED",
+	}
+	EventStatus_value = map[string]int32{
+		"EVENT_STATUS_UNSPECIFIED": 0,
+		"EVENT_STATUS_SUCCESS":     1,
+		"EVENT_STATUS_FAILED":      2,
+		"EVENT_STATUS_DENIED":      3,
+	}
+)
+
+func (x EventStatus) Enum() *EventStatus {
+	p := new(EventStatus)
+	*p = x
+	return p
+}
+
+func (x EventStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (EventStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_event_proto_enumTypes[1].Descriptor()
+}
+
+func (EventStatus) Type() protoreflect.EnumType {
+	return &file_event_proto_enumTypes[1]
+}
+
+func (x EventStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use EventStatus.Descriptor instead.
+func (EventStatus) EnumDescriptor() ([]byte, []int) {
+	return file_event_proto_rawDescGZIP(), []int{1}
+}
+
+// Главный объект события
 type Event struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	SourceSystem  string                 `protobuf:"bytes,2,opt,name=source_system,json=sourceSystem,proto3" json:"source_system,omitempty"`
-	EventTime     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=event_time,json=eventTime,proto3" json:"event_time,omitempty"`
-	PublishedTime *timestamppb.Timestamp `protobuf:"bytes,4,opt,name=published_time,json=publishedTime,proto3" json:"published_time,omitempty"`
-	Initiator     string                 `protobuf:"bytes,5,opt,name=initiator,proto3" json:"initiator,omitempty"`
-	StateBefore   string                 `protobuf:"bytes,6,opt,name=state_before,json=stateBefore,proto3" json:"state_before,omitempty"`
-	StateAfter    string                 `protobuf:"bytes,7,opt,name=state_after,json=stateAfter,proto3" json:"state_after,omitempty"`
-	Tag           string                 `protobuf:"bytes,8,opt,name=tag,proto3" json:"tag,omitempty"`
-	EventType     string                 `protobuf:"bytes,9,opt,name=event_type,json=eventType,proto3" json:"event_type,omitempty"`
-	Status        string                 `protobuf:"bytes,10,opt,name=status,proto3" json:"status,omitempty"`
-	Description   string                 `protobuf:"bytes,11,opt,name=description,proto3" json:"description,omitempty"`
-	TraceId       string                 `protobuf:"bytes,12,opt,name=trace_id,json=traceId,proto3" json:"trace_id,omitempty"`
-	InitiatorName string                 `protobuf:"bytes,13,opt,name=initiator_name,json=initiatorName,proto3" json:"initiator_name,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Уникальный ID самого события (UUIDv4) для дедупликации в СУБД
+	EventId string `protobuf:"bytes,1,opt,name=event_id,json=eventId,proto3" json:"event_id,omitempty"`
+	// Точное время происхождения события на стороне клиента (UTC)
+	Timestamp *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=timestamp,proto3" json:"timestamp,omitempty"`
+	// Бизнес-домен или модуль (например: "identity", "billing", "orders")
+	Category string `protobuf:"bytes,3,opt,name=category,proto3" json:"category,omitempty"`
+	// Конкретное техническое действие (например: "user.password_reset", "invoice.paid")
+	Action string `protobuf:"bytes,4,opt,name=action,proto3" json:"action,omitempty"`
+	// Высокоуровневый тип операции (CRUD+) для быстрой фильтрации аналитиками
+	OperationType OperationType `protobuf:"varint,5,opt,name=operation_type,json=operationType,proto3,enum=event.v1.OperationType" json:"operation_type,omitempty"`
+	// Статус выполнения (Успешно, Ошибка, Отказано в доступе)
+	Status EventStatus `protobuf:"varint,6,opt,name=status,proto3,enum=event.v1.EventStatus" json:"status,omitempty"`
+	// Субъект: Кто совершил действие?
+	Actor *Actor `protobuf:"bytes,7,opt,name=actor,proto3" json:"actor,omitempty"`
+	// Контекст: Откуда и в каком окружении совершено действие?
+	Context *RequestContext `protobuf:"bytes,8,opt,name=context,proto3" json:"context,omitempty"`
+	// Объект: Над чем совершено действие?
+	Resource *Target `protobuf:"bytes,9,opt,name=resource,proto3" json:"resource,omitempty"`
+	// Произвольные структурированные бизнес-данные (переводятся в JSON в БД)
+	ResourceDetails *structpb.Struct `protobuf:"bytes,10,opt,name=resource_details,json=resourceDetails,proto3" json:"resource_details,omitempty"`
+	// Произвольные структурированные технические-данные (переводятся в JSON в БД)
+	Details *structpb.Struct `protobuf:"bytes,11,opt,name=details,proto3" json:"details,omitempty"`
+	// Версия схемы данных (полезно при миграциях и изменении логики логов)
+	SchemaVersion string `protobuf:"bytes,12,opt,name=schema_version,json=schemaVersion,proto3" json:"schema_version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -71,93 +196,287 @@ func (*Event) Descriptor() ([]byte, []int) {
 	return file_event_proto_rawDescGZIP(), []int{0}
 }
 
-func (x *Event) GetId() string {
+func (x *Event) GetEventId() string {
+	if x != nil {
+		return x.EventId
+	}
+	return ""
+}
+
+func (x *Event) GetTimestamp() *timestamppb.Timestamp {
+	if x != nil {
+		return x.Timestamp
+	}
+	return nil
+}
+
+func (x *Event) GetCategory() string {
+	if x != nil {
+		return x.Category
+	}
+	return ""
+}
+
+func (x *Event) GetAction() string {
+	if x != nil {
+		return x.Action
+	}
+	return ""
+}
+
+func (x *Event) GetOperationType() OperationType {
+	if x != nil {
+		return x.OperationType
+	}
+	return OperationType_OPERATION_TYPE_UNSPECIFIED
+}
+
+func (x *Event) GetStatus() EventStatus {
+	if x != nil {
+		return x.Status
+	}
+	return EventStatus_EVENT_STATUS_UNSPECIFIED
+}
+
+func (x *Event) GetActor() *Actor {
+	if x != nil {
+		return x.Actor
+	}
+	return nil
+}
+
+func (x *Event) GetContext() *RequestContext {
+	if x != nil {
+		return x.Context
+	}
+	return nil
+}
+
+func (x *Event) GetResource() *Target {
+	if x != nil {
+		return x.Resource
+	}
+	return nil
+}
+
+func (x *Event) GetResourceDetails() *structpb.Struct {
+	if x != nil {
+		return x.ResourceDetails
+	}
+	return nil
+}
+
+func (x *Event) GetDetails() *structpb.Struct {
+	if x != nil {
+		return x.Details
+	}
+	return nil
+}
+
+func (x *Event) GetSchemaVersion() string {
+	if x != nil {
+		return x.SchemaVersion
+	}
+	return ""
+}
+
+// Информация об инициаторе события (Кто?)
+type Actor struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Идентификатор (ID пользователя, ID сервиса или токена)
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Тип инициатора (например: "user", "service_account", "system_cron")
+	Type string `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	// Понятное имя для быстрого чтения глазами (например: "john.doe@company.com")
+	DisplayName   string `protobuf:"bytes,3,opt,name=display_name,json=displayName,proto3" json:"display_name,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Actor) Reset() {
+	*x = Actor{}
+	mi := &file_event_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Actor) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Actor) ProtoMessage() {}
+
+func (x *Actor) ProtoReflect() protoreflect.Message {
+	mi := &file_event_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Actor.ProtoReflect.Descriptor instead.
+func (*Actor) Descriptor() ([]byte, []int) {
+	return file_event_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *Actor) GetId() string {
 	if x != nil {
 		return x.Id
 	}
 	return ""
 }
 
-func (x *Event) GetSourceSystem() string {
+func (x *Actor) GetType() string {
 	if x != nil {
-		return x.SourceSystem
+		return x.Type
 	}
 	return ""
 }
 
-func (x *Event) GetEventTime() *timestamppb.Timestamp {
+func (x *Actor) GetDisplayName() string {
 	if x != nil {
-		return x.EventTime
-	}
-	return nil
-}
-
-func (x *Event) GetPublishedTime() *timestamppb.Timestamp {
-	if x != nil {
-		return x.PublishedTime
-	}
-	return nil
-}
-
-func (x *Event) GetInitiator() string {
-	if x != nil {
-		return x.Initiator
+		return x.DisplayName
 	}
 	return ""
 }
 
-func (x *Event) GetStateBefore() string {
+// Контекст инфраструктуры и запроса (Где/Как?)
+type RequestContext struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// IP-адрес клиента (IPv4 или IPv6)
+	ClientIp string `protobuf:"bytes,1,opt,name=client_ip,json=clientIp,proto3" json:"client_ip,omitempty"`
+	// Сквозной ID для распределенной трассировки (Trace ID / Correlation ID)
+	CorrelationId string `protobuf:"bytes,2,opt,name=correlation_id,json=correlationId,proto3" json:"correlation_id,omitempty"`
+	// Имя микросервиса, который отправил этот лог
+	SourceService string `protobuf:"bytes,3,opt,name=source_service,json=sourceService,proto3" json:"source_service,omitempty"`
+	// Стенд / Окружение (например: "production", "staging", "development")
+	Environment string `protobuf:"bytes,4,opt,name=environment,proto3" json:"environment,omitempty"`
+	// Заголовок User-Agent или информация о типе устройства клиента
+	UserAgent     string `protobuf:"bytes,5,opt,name=user_agent,json=userAgent,proto3" json:"user_agent,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RequestContext) Reset() {
+	*x = RequestContext{}
+	mi := &file_event_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RequestContext) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RequestContext) ProtoMessage() {}
+
+func (x *RequestContext) ProtoReflect() protoreflect.Message {
+	mi := &file_event_proto_msgTypes[2]
 	if x != nil {
-		return x.StateBefore
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RequestContext.ProtoReflect.Descriptor instead.
+func (*RequestContext) Descriptor() ([]byte, []int) {
+	return file_event_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *RequestContext) GetClientIp() string {
+	if x != nil {
+		return x.ClientIp
 	}
 	return ""
 }
 
-func (x *Event) GetStateAfter() string {
+func (x *RequestContext) GetCorrelationId() string {
 	if x != nil {
-		return x.StateAfter
+		return x.CorrelationId
 	}
 	return ""
 }
 
-func (x *Event) GetTag() string {
+func (x *RequestContext) GetSourceService() string {
 	if x != nil {
-		return x.Tag
+		return x.SourceService
 	}
 	return ""
 }
 
-func (x *Event) GetEventType() string {
+func (x *RequestContext) GetEnvironment() string {
 	if x != nil {
-		return x.EventType
+		return x.Environment
 	}
 	return ""
 }
 
-func (x *Event) GetStatus() string {
+func (x *RequestContext) GetUserAgent() string {
 	if x != nil {
-		return x.Status
+		return x.UserAgent
 	}
 	return ""
 }
 
-func (x *Event) GetDescription() string {
+// Целевой объект, над которым совершено действие (Над чем?)
+type Target struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Уникальный ID целевого объекта (например: "order_99812", "user_auth_config")
+	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// Тип объекта (например: "order", "user_profile", "api_key")
+	Type          string `protobuf:"bytes,2,opt,name=type,proto3" json:"type,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Target) Reset() {
+	*x = Target{}
+	mi := &file_event_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Target) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Target) ProtoMessage() {}
+
+func (x *Target) ProtoReflect() protoreflect.Message {
+	mi := &file_event_proto_msgTypes[3]
 	if x != nil {
-		return x.Description
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Target.ProtoReflect.Descriptor instead.
+func (*Target) Descriptor() ([]byte, []int) {
+	return file_event_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *Target) GetId() string {
+	if x != nil {
+		return x.Id
 	}
 	return ""
 }
 
-func (x *Event) GetTraceId() string {
+func (x *Target) GetType() string {
 	if x != nil {
-		return x.TraceId
-	}
-	return ""
-}
-
-func (x *Event) GetInitiatorName() string {
-	if x != nil {
-		return x.InitiatorName
+		return x.Type
 	}
 	return ""
 }
@@ -166,25 +485,47 @@ var File_event_proto protoreflect.FileDescriptor
 
 const file_event_proto_rawDesc = "" +
 	"\n" +
-	"\vevent.proto\x12\bevent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc9\x03\n" +
-	"\x05Event\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12#\n" +
-	"\rsource_system\x18\x02 \x01(\tR\fsourceSystem\x129\n" +
+	"\vevent.proto\x12\bevent.v1\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1cgoogle/protobuf/struct.proto\"\xa6\x04\n" +
+	"\x05Event\x12\x19\n" +
+	"\bevent_id\x18\x01 \x01(\tR\aeventId\x128\n" +
+	"\ttimestamp\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\ttimestamp\x12\x1a\n" +
+	"\bcategory\x18\x03 \x01(\tR\bcategory\x12\x16\n" +
+	"\x06action\x18\x04 \x01(\tR\x06action\x12>\n" +
+	"\x0eoperation_type\x18\x05 \x01(\x0e2\x17.event.v1.OperationTypeR\roperationType\x12-\n" +
+	"\x06status\x18\x06 \x01(\x0e2\x15.event.v1.EventStatusR\x06status\x12%\n" +
+	"\x05actor\x18\a \x01(\v2\x0f.event.v1.ActorR\x05actor\x122\n" +
+	"\acontext\x18\b \x01(\v2\x18.event.v1.RequestContextR\acontext\x12,\n" +
+	"\bresource\x18\t \x01(\v2\x10.event.v1.TargetR\bresource\x12B\n" +
+	"\x10resource_details\x18\n" +
+	" \x01(\v2\x17.google.protobuf.StructR\x0fresourceDetails\x121\n" +
+	"\adetails\x18\v \x01(\v2\x17.google.protobuf.StructR\adetails\x12%\n" +
+	"\x0eschema_version\x18\f \x01(\tR\rschemaVersion\"N\n" +
+	"\x05Actor\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type\x12!\n" +
+	"\fdisplay_name\x18\x03 \x01(\tR\vdisplayName\"\xbc\x01\n" +
+	"\x0eRequestContext\x12\x1b\n" +
+	"\tclient_ip\x18\x01 \x01(\tR\bclientIp\x12%\n" +
+	"\x0ecorrelation_id\x18\x02 \x01(\tR\rcorrelationId\x12%\n" +
+	"\x0esource_service\x18\x03 \x01(\tR\rsourceService\x12 \n" +
+	"\venvironment\x18\x04 \x01(\tR\venvironment\x12\x1d\n" +
 	"\n" +
-	"event_time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\teventTime\x12A\n" +
-	"\x0epublished_time\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\rpublishedTime\x12\x1c\n" +
-	"\tinitiator\x18\x05 \x01(\tR\tinitiator\x12!\n" +
-	"\fstate_before\x18\x06 \x01(\tR\vstateBefore\x12\x1f\n" +
-	"\vstate_after\x18\a \x01(\tR\n" +
-	"stateAfter\x12\x10\n" +
-	"\x03tag\x18\b \x01(\tR\x03tag\x12\x1d\n" +
-	"\n" +
-	"event_type\x18\t \x01(\tR\teventType\x12\x16\n" +
-	"\x06status\x18\n" +
-	" \x01(\tR\x06status\x12 \n" +
-	"\vdescription\x18\v \x01(\tR\vdescription\x12\x19\n" +
-	"\btrace_id\x18\f \x01(\tR\atraceId\x12%\n" +
-	"\x0einitiator_name\x18\r \x01(\tR\rinitiatorNameB:Z8github.com/korlvs/event-logging/contracts/event/event/v1b\x06proto3"
+	"user_agent\x18\x05 \x01(\tR\tuserAgent\",\n" +
+	"\x06Target\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04type\x18\x02 \x01(\tR\x04type*\xb5\x01\n" +
+	"\rOperationType\x12\x1e\n" +
+	"\x1aOPERATION_TYPE_UNSPECIFIED\x10\x00\x12\x19\n" +
+	"\x15OPERATION_TYPE_CREATE\x10\x01\x12\x17\n" +
+	"\x13OPERATION_TYPE_READ\x10\x02\x12\x19\n" +
+	"\x15OPERATION_TYPE_UPDATE\x10\x03\x12\x19\n" +
+	"\x15OPERATION_TYPE_DELETE\x10\x04\x12\x1a\n" +
+	"\x16OPERATION_TYPE_EXECUTE\x10\x05*w\n" +
+	"\vEventStatus\x12\x1c\n" +
+	"\x18EVENT_STATUS_UNSPECIFIED\x10\x00\x12\x18\n" +
+	"\x14EVENT_STATUS_SUCCESS\x10\x01\x12\x17\n" +
+	"\x13EVENT_STATUS_FAILED\x10\x02\x12\x17\n" +
+	"\x13EVENT_STATUS_DENIED\x10\x03B:Z8github.com/korlvs/event-logging/contracts/event/event/v1b\x06proto3"
 
 var (
 	file_event_proto_rawDescOnce sync.Once
@@ -198,19 +539,32 @@ func file_event_proto_rawDescGZIP() []byte {
 	return file_event_proto_rawDescData
 }
 
-var file_event_proto_msgTypes = make([]protoimpl.MessageInfo, 1)
+var file_event_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_event_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
 var file_event_proto_goTypes = []any{
-	(*Event)(nil),                 // 0: event.v1.Event
-	(*timestamppb.Timestamp)(nil), // 1: google.protobuf.Timestamp
+	(OperationType)(0),            // 0: event.v1.OperationType
+	(EventStatus)(0),              // 1: event.v1.EventStatus
+	(*Event)(nil),                 // 2: event.v1.Event
+	(*Actor)(nil),                 // 3: event.v1.Actor
+	(*RequestContext)(nil),        // 4: event.v1.RequestContext
+	(*Target)(nil),                // 5: event.v1.Target
+	(*timestamppb.Timestamp)(nil), // 6: google.protobuf.Timestamp
+	(*structpb.Struct)(nil),       // 7: google.protobuf.Struct
 }
 var file_event_proto_depIdxs = []int32{
-	1, // 0: event.v1.Event.event_time:type_name -> google.protobuf.Timestamp
-	1, // 1: event.v1.Event.published_time:type_name -> google.protobuf.Timestamp
-	2, // [2:2] is the sub-list for method output_type
-	2, // [2:2] is the sub-list for method input_type
-	2, // [2:2] is the sub-list for extension type_name
-	2, // [2:2] is the sub-list for extension extendee
-	0, // [0:2] is the sub-list for field type_name
+	6, // 0: event.v1.Event.timestamp:type_name -> google.protobuf.Timestamp
+	0, // 1: event.v1.Event.operation_type:type_name -> event.v1.OperationType
+	1, // 2: event.v1.Event.status:type_name -> event.v1.EventStatus
+	3, // 3: event.v1.Event.actor:type_name -> event.v1.Actor
+	4, // 4: event.v1.Event.context:type_name -> event.v1.RequestContext
+	5, // 5: event.v1.Event.resource:type_name -> event.v1.Target
+	7, // 6: event.v1.Event.resource_details:type_name -> google.protobuf.Struct
+	7, // 7: event.v1.Event.details:type_name -> google.protobuf.Struct
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_event_proto_init() }
@@ -223,13 +577,14 @@ func file_event_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_event_proto_rawDesc), len(file_event_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   1,
+			NumEnums:      2,
+			NumMessages:   4,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
 		GoTypes:           file_event_proto_goTypes,
 		DependencyIndexes: file_event_proto_depIdxs,
+		EnumInfos:         file_event_proto_enumTypes,
 		MessageInfos:      file_event_proto_msgTypes,
 	}.Build()
 	File_event_proto = out.File
