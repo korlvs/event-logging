@@ -12,7 +12,6 @@ import (
 	"time"
 
 	event "github.com/korlvs/event-logging/contracts/event/v1"
-	"github.com/korlvs/event-logging/services/event-sink/internal/model"
 	"github.com/korlvs/event-logging/services/event-sink/internal/repository"
 	"google.golang.org/protobuf/proto"
 )
@@ -25,16 +24,14 @@ type RestConsumer struct {
 	password              string
 	client                *http.Client
 	instanceID            string
-	repo                  repository.EventRepository
+	repo                  repository.AuditEventRepository
 	expectedSchemaIDKey   int
 	expectedSchemaIDValue int
 }
 
-func NewRestConsumer(
-	restURL, topic, group, username, password string,
-	repo repository.EventRepository,
-	expectedSchemaIDKey, expectedSchemaIDValue int,
-) (*RestConsumer, error) {
+func NewRestConsumer(restURL, topic, group, username, password string,
+	repo repository.AuditEventRepository,
+	expectedSchemaIDKey, expectedSchemaIDValue int) (*RestConsumer, error) {
 	c := &RestConsumer{
 		restURL:               restURL,
 		topic:                 topic,
@@ -72,12 +69,10 @@ func (c *RestConsumer) createInstance() error {
 		return err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("create consumer: %s", body)
 	}
-
 	var result struct {
 		InstanceID string `json:"instance_id"`
 		BaseURI    string `json:"base_uri"`
@@ -158,7 +153,7 @@ func (c *RestConsumer) Start(ctx context.Context) error {
 			if err != nil || keySchemaID != c.expectedSchemaIDKey {
 				continue
 			}
-			_ = string(keyData) // может пригодиться для логирования
+			_ = string(keyData) // ключ может пригодиться
 
 			// Декодируем значение
 			valueBytes, err := base64.StdEncoding.DecodeString(rec.Value)
@@ -174,24 +169,9 @@ func (c *RestConsumer) Start(ctx context.Context) error {
 			if err := proto.Unmarshal(protoBytes, &pbEvent); err != nil {
 				continue
 			}
-
-			stored := &model.StoredEvent{
-				ID:            pbEvent.Id,
-				SourceSystem:  pbEvent.SourceSystem,
-				EventTime:     pbEvent.EventTime.AsTime(),
-				PublishedTime: pbEvent.PublishedTime.AsTime(),
-				Initiator:     pbEvent.Initiator,
-				StateBefore:   pbEvent.StateBefore,
-				StateAfter:    pbEvent.StateAfter,
-				Tag:           pbEvent.Tag,
-				EventType:     pbEvent.EventType,
-				Status:        pbEvent.Status,
-				Description:   pbEvent.Description,
-				TraceID:       pbEvent.TraceId,
-				InitiatorName: pbEvent.InitiatorName,
-			}
+			stored := convertToModel(&pbEvent)
 			if err := c.repo.Save(ctx, stored); err != nil {
-				// логируем ошибку, но продолжаем
+				// логируем, но не коммитим
 				continue
 			}
 			// TODO: коммит смещения
@@ -199,6 +179,7 @@ func (c *RestConsumer) Start(ctx context.Context) error {
 	}
 }
 
+// decodeMessage (та же, что в outbox/schema.go)
 func decodeMessage(data []byte) (int, []byte, error) {
 	if len(data) < 5 {
 		return 0, nil, fmt.Errorf("too short")

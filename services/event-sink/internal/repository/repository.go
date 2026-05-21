@@ -7,8 +7,8 @@ import (
 	"gorm.io/gorm"
 )
 
-type EventRepository interface {
-	Save(ctx context.Context, event *model.StoredEvent) error
+type AuditEventRepository interface {
+	Save(ctx context.Context, event *model.AuditEvent) error
 }
 
 type PostgresEventRepository struct {
@@ -19,6 +19,6 @@ func NewPostgresEventRepository(db *gorm.DB) *PostgresEventRepository {
 	return &PostgresEventRepository{db: db}
 }
 
-func (r *PostgresEventRepository) Save(ctx context.Context, event *model.StoredEvent) error {
+func (r *PostgresEventRepository) Save(ctx context.Context, event *model.AuditEvent) error {
 	return r.db.WithContext(ctx).Create(event).Error
 }

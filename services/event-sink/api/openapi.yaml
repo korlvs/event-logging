@@ -2,107 +2,222 @@ openapi: 3.0.3
 info:
   title: Event Sink API
   version: 1.0.0
+  description: API для чтения аудит-логов и событий безопасности
+
 paths:
-  /health:
+  /audit/events:
     get:
-      operationId: health
-      responses:
-        '200':
-          description: OK
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  status:
-                    type: string
-  /events:
-    get:
-      operationId: listEvents
+      operationId: listAuditEvents
+      summary: Получить список аудит-событий с фильтрацией и пагинацией
       parameters:
-        - name: source_system
-          in: query
-          schema: { type: string }
         - name: event_type
           in: query
+          description: Тип события (фильтр по action)
           schema: { type: string }
+        - name: is_name
+          in: query
+          description: Название информационной системы (поле в resource_details)
+          schema: { type: string }
+        - name: actor_display_name
+          in: query
+          description: Автор события
+          schema: { type: string }
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+        - name: operation_type
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 5
         - name: status
           in: query
-          schema: { type: string }
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 3
+        - name: actor_id
+          in: query
+          schema:
+            type: string
+        - name: correlation_id
+          in: query
+          schema:
+            type: string
+        - name: source_service
+          in: query
+          schema:
+            type: string
         - name: search
           in: query
-          description: Поиск по initiator и description
-          schema: { type: string }
-        - name: tag
-          in: query
-          schema: { type: string }
+          description: Поиск по actor_display_name, resource_id, details (JSON)
+          schema:
+            type: string
         - name: from
           in: query
-          schema: { type: string, format: date-time }
+          schema:
+            type: string
+            format: date-time
         - name: to
           in: query
-          schema: { type: string, format: date-time }
+          schema:
+            type: string
+            format: date-time
         - name: page
           in: query
-          schema: { type: integer, default: 1, minimum: 1 }
+          schema:
+            type: integer
+            default: 1
+            minimum: 1
         - name: page_size
           in: query
-          schema: { type: integer, default: 20, minimum: 1, maximum: 100 }
+          schema:
+            type: integer
+            default: 20
+            minimum: 1
+            maximum: 100
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/EventListResponse'
+                $ref: '#/components/schemas/AuditEventListResponse'
+        '400':
+          description: Неверные параметры
+        '500':
+          description: Внутренняя ошибка
 
-  /events/{id}:
+  /audit/events/{id}:
     get:
-      operationId: getEventById
+      operationId: getAuditEventById
+      summary: Получить одно событие по ID
       parameters:
         - name: id
           in: path
           required: true
-          schema: { type: string }
+          schema:
+            type: string
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/StoredEvent'
+                $ref: '#/components/schemas/AuditEvent'
+        '404':
+          description: Событие не найдено
+        '500':
+          description: Внутренняя ошибка
+
+  /audit/export/csv:
+    post:
+      operationId: exportAuditEventsCsv
+      summary: Экспорт событий в CSV (первые 10000 записей)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExportFilters'
+      responses:
+        '200':
+          description: CSV файл
+          content:
+            text/csv: {}
+        '400':
+          description: Неверные параметры
+        '500':
+          description: Внутренняя ошибка
+
 components:
   schemas:
-    StoredEvent:
+    AuditEvent:
       type: object
       required:
         - id
-        - source_system
-        - event_time
-        - published_time
-        - initiator
-        - tag
-        - event_type
+        - event_id
+        - timestamp
+        - category
+        - action
+        - operation_type
+        - status
       properties:
-        id: { type: string }
-        source_system: { type: string }
-        event_time: { type: string, format: date-time }
-        published_time: { type: string, format: date-time }
-        initiator: { type: string }
-        state_before: { type: string, nullable: true }
-        state_after: { type: string, nullable: true }
-        tag: { type: string }
-        event_type: { type: string }
-        status: { type: string, nullable: true }
-        description: { type: string, nullable: true }
-        trace_id: { type: string, nullable: true, description: "Опциональный идентификатор трассировки" }
-        created_at: { type: string, format: date-time, readOnly: true }
-        initiator_name:
+        id:
+          type: string
+          description: UUID события в БД
+        event_id:
+          type: string
+          description: Оригинальный ID события (из отправителя)
+        timestamp:
+          type: string
+          format: date-time
+          description: Время события
+        category:
+          type: string
+          description: Категория события (например, auth, billing)
+        action:
+          type: string
+          description: Действие (например, user.login)
+        operation_type:
+          type: integer
+          description: 1=CREATE,2=READ,3=UPDATE,4=DELETE,5=EXECUTE
+        status:
+          type: integer
+          description: 1=SUCCESS,2=FAILED,3=DENIED
+        actor_id:
           type: string
           nullable: true
-          description: "Читаемое имя инициатора (опционально)"
+        actor_type:
+          type: string
+          nullable: true
+        actor_display_name:
+          type: string
+          nullable: true
+        client_ip:
+          type: string
+          nullable: true
+        correlation_id:
+          type: string
+          nullable: true
+        source_service:
+          type: string
+          nullable: true
+        environment:
+          type: string
+          nullable: true
+        user_agent:
+          type: string
+          nullable: true
+        resource_id:
+          type: string
+          nullable: true
+        resource_type:
+          type: string
+          nullable: true
+        resource_details:
+          type: object
+          additionalProperties: true
+          nullable: true
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+        schema_version:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
 
-    EventListResponse:
+    AuditEventListResponse:
       type: object
       required:
         - items
@@ -114,7 +229,7 @@ components:
         items:
           type: array
           items:
-            $ref: '#/components/schemas/StoredEvent'
+            $ref: '#/components/schemas/AuditEvent'
         total:
           type: integer
           format: int64
@@ -124,3 +239,37 @@ components:
           type: integer
         total_pages:
           type: integer
+
+    ExportFilters:
+      type: object
+      properties:
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+        status:
+          type: integer
+          minimum: 1
+          maximum: 3
+        is_name:
+          type: string
+        actor_display_name:
+          type: string
+        category:
+          type: string
+        action:
+          type: string
+        operation_type:
+          type: integer
+        actor_id:
+          type: string
+        correlation_id:
+          type: string
+        source_service:
+          type: string
+        search:
+          type: string

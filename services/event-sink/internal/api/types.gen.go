@@ -19,63 +19,110 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// EventListResponse defines model for EventListResponse.
-type EventListResponse struct {
-	Items      []StoredEvent `json:"items"`
-	Page       int           `json:"page"`
-	PageSize   int           `json:"page_size"`
-	Total      int64         `json:"total"`
-	TotalPages int           `json:"total_pages"`
+// AuditEvent defines model for AuditEvent.
+type AuditEvent struct {
+	// Action Действие (например, user.login)
+	Action           string  `json:"action"`
+	ActorDisplayName *string `json:"actor_display_name"`
+	ActorId          *string `json:"actor_id"`
+	ActorType        *string `json:"actor_type"`
+
+	// Category Категория события (например, auth, billing)
+	Category      string                  `json:"category"`
+	ClientIp      *string                 `json:"client_ip"`
+	CorrelationId *string                 `json:"correlation_id"`
+	CreatedAt     *time.Time              `json:"created_at,omitempty"`
+	Details       *map[string]interface{} `json:"details"`
+	Environment   *string                 `json:"environment"`
+
+	// EventId Оригинальный ID события (из отправителя)
+	EventId string `json:"event_id"`
+
+	// Id UUID события в БД
+	Id string `json:"id"`
+
+	// OperationType 1=CREATE,2=READ,3=UPDATE,4=DELETE,5=EXECUTE
+	OperationType   int                     `json:"operation_type"`
+	ResourceDetails *map[string]interface{} `json:"resource_details"`
+	ResourceId      *string                 `json:"resource_id"`
+	ResourceType    *string                 `json:"resource_type"`
+	SchemaVersion   *string                 `json:"schema_version"`
+	SourceService   *string                 `json:"source_service"`
+
+	// Status 1=SUCCESS,2=FAILED,3=DENIED
+	Status int `json:"status"`
+
+	// Timestamp Время события
+	Timestamp time.Time `json:"timestamp"`
+	UserAgent *string   `json:"user_agent"`
 }
 
-// StoredEvent defines model for StoredEvent.
-type StoredEvent struct {
-	CreatedAt   *time.Time `json:"created_at,omitempty"`
-	Description *string    `json:"description"`
-	EventTime   time.Time  `json:"event_time"`
-	EventType   string     `json:"event_type"`
-	Id          string     `json:"id"`
-	Initiator   string     `json:"initiator"`
-
-	// InitiatorName Читаемое имя инициатора (опционально)
-	InitiatorName *string   `json:"initiator_name"`
-	PublishedTime time.Time `json:"published_time"`
-	SourceSystem  string    `json:"source_system"`
-	StateAfter    *string   `json:"state_after"`
-	StateBefore   *string   `json:"state_before"`
-	Status        *string   `json:"status"`
-	Tag           string    `json:"tag"`
-
-	// TraceId Опциональный идентификатор трассировки
-	TraceId *string `json:"trace_id"`
+// AuditEventListResponse defines model for AuditEventListResponse.
+type AuditEventListResponse struct {
+	Items      []AuditEvent `json:"items"`
+	Page       int          `json:"page"`
+	PageSize   int          `json:"page_size"`
+	Total      int64        `json:"total"`
+	TotalPages int          `json:"total_pages"`
 }
 
-// ListEventsParams defines parameters for ListEvents.
-type ListEventsParams struct {
-	SourceSystem *string `form:"source_system,omitempty" json:"source_system,omitempty"`
-	EventType    *string `form:"event_type,omitempty" json:"event_type,omitempty"`
-	Status       *string `form:"status,omitempty" json:"status,omitempty"`
+// ExportFilters defines model for ExportFilters.
+type ExportFilters struct {
+	Action           *string    `json:"action,omitempty"`
+	ActorDisplayName *string    `json:"actor_display_name,omitempty"`
+	ActorId          *string    `json:"actor_id,omitempty"`
+	Category         *string    `json:"category,omitempty"`
+	CorrelationId    *string    `json:"correlation_id,omitempty"`
+	EventType        *string    `json:"event_type,omitempty"`
+	From             *time.Time `json:"from,omitempty"`
+	IsName           *string    `json:"is_name,omitempty"`
+	OperationType    *int       `json:"operation_type,omitempty"`
+	Search           *string    `json:"search,omitempty"`
+	SourceService    *string    `json:"source_service,omitempty"`
+	Status           *int       `json:"status,omitempty"`
+	To               *time.Time `json:"to,omitempty"`
+}
 
-	// Search Поиск по initiator и description
+// ListAuditEventsParams defines parameters for ListAuditEvents.
+type ListAuditEventsParams struct {
+	// EventType Тип события (фильтр по action)
+	EventType *string `form:"event_type,omitempty" json:"event_type,omitempty"`
+
+	// IsName Название информационной системы (поле в resource_details)
+	IsName *string `form:"is_name,omitempty" json:"is_name,omitempty"`
+
+	// ActorDisplayName Автор события
+	ActorDisplayName *string `form:"actor_display_name,omitempty" json:"actor_display_name,omitempty"`
+	Category         *string `form:"category,omitempty" json:"category,omitempty"`
+	Action           *string `form:"action,omitempty" json:"action,omitempty"`
+	OperationType    *int    `form:"operation_type,omitempty" json:"operation_type,omitempty"`
+	Status           *int    `form:"status,omitempty" json:"status,omitempty"`
+	ActorId          *string `form:"actor_id,omitempty" json:"actor_id,omitempty"`
+	CorrelationId    *string `form:"correlation_id,omitempty" json:"correlation_id,omitempty"`
+	SourceService    *string `form:"source_service,omitempty" json:"source_service,omitempty"`
+
+	// Search Поиск по actor_display_name, resource_id, details (JSON)
 	Search   *string    `form:"search,omitempty" json:"search,omitempty"`
-	Tag      *string    `form:"tag,omitempty" json:"tag,omitempty"`
 	From     *time.Time `form:"from,omitempty" json:"from,omitempty"`
 	To       *time.Time `form:"to,omitempty" json:"to,omitempty"`
 	Page     *int       `form:"page,omitempty" json:"page,omitempty"`
 	PageSize *int       `form:"page_size,omitempty" json:"page_size,omitempty"`
 }
 
+// ExportAuditEventsCsvJSONRequestBody defines body for ExportAuditEventsCsv for application/json ContentType.
+type ExportAuditEventsCsvJSONRequestBody = ExportFilters
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-
-	// (GET /events)
-	ListEvents(ctx echo.Context, params ListEventsParams) error
-
-	// (GET /events/{id})
-	GetEventById(ctx echo.Context, id string) error
-
-	// (GET /health)
-	Health(ctx echo.Context) error
+	// Получить список аудит-событий с фильтрацией и пагинацией
+	// (GET /audit/events)
+	ListAuditEvents(ctx echo.Context, params ListAuditEventsParams) error
+	// Получить одно событие по ID
+	// (GET /audit/events/{id})
+	GetAuditEventById(ctx echo.Context, id string) error
+	// Экспорт событий в CSV (первые 10000 записей)
+	// (POST /audit/export/csv)
+	ExportAuditEventsCsv(ctx echo.Context) error
 }
 
 // ServerInterfaceWrapper converts echo contexts to parameters.
@@ -83,24 +130,52 @@ type ServerInterfaceWrapper struct {
 	Handler ServerInterface
 }
 
-// ListEvents converts echo context to params.
-func (w *ServerInterfaceWrapper) ListEvents(ctx echo.Context) error {
+// ListAuditEvents converts echo context to params.
+func (w *ServerInterfaceWrapper) ListAuditEvents(ctx echo.Context) error {
 	var err error
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params ListEventsParams
-	// ------------- Optional query parameter "source_system" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "source_system", ctx.QueryParams(), &params.SourceSystem)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter source_system: %s", err))
-	}
-
+	var params ListAuditEventsParams
 	// ------------- Optional query parameter "event_type" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "event_type", ctx.QueryParams(), &params.EventType)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter event_type: %s", err))
+	}
+
+	// ------------- Optional query parameter "is_name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "is_name", ctx.QueryParams(), &params.IsName)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter is_name: %s", err))
+	}
+
+	// ------------- Optional query parameter "actor_display_name" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "actor_display_name", ctx.QueryParams(), &params.ActorDisplayName)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter actor_display_name: %s", err))
+	}
+
+	// ------------- Optional query parameter "category" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "category", ctx.QueryParams(), &params.Category)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter category: %s", err))
+	}
+
+	// ------------- Optional query parameter "action" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "action", ctx.QueryParams(), &params.Action)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter action: %s", err))
+	}
+
+	// ------------- Optional query parameter "operation_type" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "operation_type", ctx.QueryParams(), &params.OperationType)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter operation_type: %s", err))
 	}
 
 	// ------------- Optional query parameter "status" -------------
@@ -110,18 +185,32 @@ func (w *ServerInterfaceWrapper) ListEvents(ctx echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter status: %s", err))
 	}
 
+	// ------------- Optional query parameter "actor_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "actor_id", ctx.QueryParams(), &params.ActorId)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter actor_id: %s", err))
+	}
+
+	// ------------- Optional query parameter "correlation_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "correlation_id", ctx.QueryParams(), &params.CorrelationId)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter correlation_id: %s", err))
+	}
+
+	// ------------- Optional query parameter "source_service" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "source_service", ctx.QueryParams(), &params.SourceService)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter source_service: %s", err))
+	}
+
 	// ------------- Optional query parameter "search" -------------
 
 	err = runtime.BindQueryParameter("form", true, false, "search", ctx.QueryParams(), &params.Search)
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter search: %s", err))
-	}
-
-	// ------------- Optional query parameter "tag" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "tag", ctx.QueryParams(), &params.Tag)
-	if err != nil {
-		return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("Invalid format for parameter tag: %s", err))
 	}
 
 	// ------------- Optional query parameter "from" -------------
@@ -153,12 +242,12 @@ func (w *ServerInterfaceWrapper) ListEvents(ctx echo.Context) error {
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.ListEvents(ctx, params)
+	err = w.Handler.ListAuditEvents(ctx, params)
 	return err
 }
 
-// GetEventById converts echo context to params.
-func (w *ServerInterfaceWrapper) GetEventById(ctx echo.Context) error {
+// GetAuditEventById converts echo context to params.
+func (w *ServerInterfaceWrapper) GetAuditEventById(ctx echo.Context) error {
 	var err error
 	// ------------- Path parameter "id" -------------
 	var id string
@@ -169,16 +258,16 @@ func (w *ServerInterfaceWrapper) GetEventById(ctx echo.Context) error {
 	}
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.GetEventById(ctx, id)
+	err = w.Handler.GetAuditEventById(ctx, id)
 	return err
 }
 
-// Health converts echo context to params.
-func (w *ServerInterfaceWrapper) Health(ctx echo.Context) error {
+// ExportAuditEventsCsv converts echo context to params.
+func (w *ServerInterfaceWrapper) ExportAuditEventsCsv(ctx echo.Context) error {
 	var err error
 
 	// Invoke the callback with all the unmarshaled arguments
-	err = w.Handler.Health(ctx)
+	err = w.Handler.ExportAuditEventsCsv(ctx)
 	return err
 }
 
@@ -210,29 +299,40 @@ func RegisterHandlersWithBaseURL(router EchoRouter, si ServerInterface, baseURL 
 		Handler: si,
 	}
 
-	router.GET(baseURL+"/events", wrapper.ListEvents)
-	router.GET(baseURL+"/events/:id", wrapper.GetEventById)
-	router.GET(baseURL+"/health", wrapper.Health)
+	router.GET(baseURL+"/audit/events", wrapper.ListAuditEvents)
+	router.GET(baseURL+"/audit/events/:id", wrapper.GetAuditEventById)
+	router.POST(baseURL+"/audit/export/csv", wrapper.ExportAuditEventsCsv)
 
 }
 
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

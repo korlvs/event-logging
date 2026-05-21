@@ -5,7 +5,7 @@ import (
 	"log"
 
 	"github.com/IBM/sarama"
-	event "github.com/korlvs/event-logging/contracts/event/v1"
+	eventpb "github.com/korlvs/event-logging/contracts/event/v1"
 	"github.com/korlvs/event-logging/services/event-sink/internal/model"
 	"github.com/korlvs/event-logging/services/event-sink/internal/repository"
 	"google.golang.org/protobuf/proto"
@@ -13,11 +13,11 @@ import (
 
 type SaramaConsumer struct {
 	consumer sarama.ConsumerGroup
-	repo     repository.EventRepository
+	repo     repository.AuditEventRepository
 	topic    string
 }
 
-func NewSaramaConsumer(brokers []string, groupID, topic string, repo repository.EventRepository) (*SaramaConsumer, error) {
+func NewSaramaConsumer(brokers []string, groupID, topic string, repo repository.AuditEventRepository) (*SaramaConsumer, error) {
 	cfg := sarama.NewConfig()
 	cfg.Consumer.Group.Rebalance.Strategy = sarama.NewBalanceStrategyRoundRobin()
 	cfg.Consumer.Offsets.Initial = sarama.OffsetOldest
@@ -45,7 +45,7 @@ func (c *SaramaConsumer) Start(ctx context.Context) error {
 }
 
 type saramaHandler struct {
-	repo repository.EventRepository
+	repo repository.AuditEventRepository
 }
 
 func (h *saramaHandler) Setup(sarama.ConsumerGroupSession) error   { return nil }
@@ -53,27 +53,13 @@ func (h *saramaHandler) Cleanup(sarama.ConsumerGroupSession) error { return nil 
 
 func (h *saramaHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sarama.ConsumerGroupClaim) error {
 	for msg := range claim.Messages() {
-		var pbEvent event.Event
+		var pbEvent eventpb.Event
 		if err := proto.Unmarshal(msg.Value, &pbEvent); err != nil {
 			log.Printf("unmarshal error: %v", err)
 			sess.MarkMessage(msg, "")
 			continue
 		}
-		stored := &model.StoredEvent{
-			ID:            pbEvent.Id,
-			SourceSystem:  pbEvent.SourceSystem,
-			EventTime:     pbEvent.EventTime.AsTime(),
-			PublishedTime: pbEvent.PublishedTime.AsTime(),
-			Initiator:     pbEvent.Initiator,
-			StateBefore:   pbEvent.StateBefore,
-			StateAfter:    pbEvent.StateAfter,
-			Tag:           pbEvent.Tag,
-			EventType:     pbEvent.EventType,
-			Status:        pbEvent.Status,
-			Description:   pbEvent.Description,
-			TraceID:       pbEvent.TraceId,
-			InitiatorName: pbEvent.InitiatorName,
-		}
+		stored := convertToModel(&pbEvent)
 		if err := h.repo.Save(sess.Context(), stored); err != nil {
 			log.Printf("save error: %v", err)
 			continue
@@ -81,4 +67,39 @@ func (h *saramaHandler) ConsumeClaim(sess sarama.ConsumerGroupSession, claim sar
 		sess.MarkMessage(msg, "")
 	}
 	return nil
+}
+
+func convertToModel(pb *eventpb.Event) *model.AuditEvent {
+	ev := &model.AuditEvent{
+		EventID:       pb.EventId,
+		Timestamp:     pb.Timestamp.AsTime(),
+		Category:      pb.Category,
+		Action:        pb.Action,
+		OperationType: int(pb.OperationType),
+		Status:        int(pb.Status),
+		SchemaVersion: pb.SchemaVersion,
+	}
+	if pb.Actor != nil {
+		ev.ActorID = pb.Actor.Id
+		ev.ActorType = pb.Actor.Type
+		ev.ActorDisplayName = pb.Actor.DisplayName
+	}
+	if pb.Context != nil {
+		ev.ClientIP = pb.Context.ClientIp
+		ev.CorrelationID = pb.Context.CorrelationId
+		ev.SourceService = pb.Context.SourceService
+		ev.Environment = pb.Context.Environment
+		ev.UserAgent = pb.Context.UserAgent
+	}
+	if pb.Resource != nil {
+		ev.ResourceID = pb.Resource.Id
+		ev.ResourceType = pb.Resource.Type
+	}
+	if pb.ResourceDetails != nil {
+		ev.ResourceDetails = pb.ResourceDetails.AsMap()
+	}
+	if pb.Details != nil {
+		ev.Details = pb.Details.AsMap()
+	}
+	return ev
 }
